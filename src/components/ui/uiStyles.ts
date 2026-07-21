@@ -258,21 +258,26 @@ export const uiProgressBarStyles: CSSProperties = {
 };
 
 export const uiSwitchStyles: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  padding: 'var(--spacing-xsmall)',
-  background: 'var(--color-surface)',
-  borderRadius: '999px',
+  position: 'relative',
+  width: '3rem',
+  height: '1.75rem',
+  flexShrink: 0,
+  padding: 0,
   border: '1px solid var(--color-border)',
-  cursor: 'pointer',
+  borderRadius: '999px',
+  background: 'var(--color-surface)',
+  overflow: 'hidden',
 };
 
 export const uiSwitchThumbStyles: CSSProperties = {
+  position: 'absolute',
+  top: '0.25rem',
   width: '1.25rem',
   height: '1.25rem',
   borderRadius: '50%',
-  background: 'var(--color-background)',
-  transition: 'transform var(--transition-normal)',
+  background: 'var(--color-text-primary)',
+  transition: 'left 160ms ease',
+  pointerEvents: 'none',
 };
 
 export const uiSkeletonStyles: CSSProperties = {

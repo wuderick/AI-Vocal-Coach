@@ -31,13 +31,14 @@ export function Switch({ checked, disabled, onChange }: SwitchProps) {
         ...uiSwitchStyles,
         opacity: disabled ? 0.6 : 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        justifyContent: checked ? 'flex-end' : 'flex-start',
       }}
     >
-      <span style={{
-        ...uiSwitchThumbStyles,
-        transform: checked ? 'translateX(1.25rem)' : 'translateX(0)',
-      }} />
+      <span
+        style={{
+          ...uiSwitchThumbStyles,
+          left: checked ? 'calc(100% - 1.5rem)' : '0.25rem',
+        }}
+      />
     </button>
   );
 }

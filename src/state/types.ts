@@ -14,11 +14,14 @@ export interface AppState {
   recordingState: RecordingState;
   microphonePermission: MicrophonePermission;
   currentSession: CurrentSessionState;
+  autoSaveRecording: boolean;
 }
 
 export interface AppStateActions {
   setTheme: (theme: ThemeMode) => void;
   setRecordingState: (recordingState: RecordingState) => void;
   setMicrophonePermission: (permission: MicrophonePermission) => void;
+  setAutoSaveRecording: (enabled: boolean) => void;
   updateCurrentSession: (updater: (currentSession: CurrentSessionState) => CurrentSessionState) => void;
+  resetSettings: () => void;
 }

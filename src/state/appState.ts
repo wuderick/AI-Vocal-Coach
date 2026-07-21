@@ -11,6 +11,7 @@ export const initialAppState: AppState = {
   recordingState: 'idle',
   microphonePermission: 'unknown',
   currentSession: initialCurrentSessionState,
+  autoSaveRecording: true,
 };
 
 export function createAppState(overrides: Partial<AppState> = {}): AppState {
