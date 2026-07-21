@@ -3,8 +3,8 @@ import { Navigation } from './Navigation';
 export function Header() {
   return (
     <header style={{
-      padding: '1rem',
-      borderBottom: '1px solid #ddd',
+      padding: 'var(--spacing-medium)',
+      borderBottom: '1px solid var(--color-border)',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',

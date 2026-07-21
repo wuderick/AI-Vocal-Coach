@@ -1,12 +1,12 @@
 export function Footer() {
   return (
     <footer style={{
-      padding: '1rem',
-      borderTop: '1px solid #ddd',
+      padding: 'var(--spacing-medium)',
+      borderTop: '1px solid var(--color-border)',
       marginTop: 'auto',
       textAlign: 'center',
-      fontSize: '0.9rem',
-      color: '#555',
+      fontSize: 'var(--font-size-small)',
+      color: 'var(--color-text-secondary)',
     }}>
       <div>AI Vocal Coach</div>
       <div>Version 0.1.0</div>

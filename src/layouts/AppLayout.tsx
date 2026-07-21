@@ -6,7 +6,7 @@ export function AppLayout() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
       <Header />
-      <main style={{ flex: 1, padding: '1rem' }}>
+      <main style={{ flex: 1, padding: 'var(--spacing-medium)' }}>
         <Outlet />
       </main>
       <Footer />

@@ -2,12 +2,12 @@ import { NavLink } from 'react-router-dom';
 
 const linkStyles = {
   textDecoration: 'none',
-  color: 'inherit',
+  color: 'var(--color-text-primary)',
 };
 
 export function Navigation() {
   return (
-    <nav aria-label="Primary navigation" style={{ display: 'flex', gap: '1rem' }}>
+    <nav aria-label="Primary navigation" style={{ display: 'flex', gap: 'var(--spacing-medium)' }}>
       <NavLink to="/" style={linkStyles} end>
         Home
       </NavLink>

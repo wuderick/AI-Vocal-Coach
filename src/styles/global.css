@@ -1,9 +1,12 @@
+@import '../theme/index.css';
+
 :root {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #e5eefc;
-  background-color: #07111f;
+  color: var(--color-text-primary);
+  background-color: var(--color-background);
+  font-family: var(--font-family);
+  line-height: var(--line-height);
+  font-weight: var(--font-weight-normal);
+  font-size: var(--font-size-base);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -18,7 +21,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: linear-gradient(135deg, #07111f 0%, #10243b 100%);
+  background: linear-gradient(135deg, var(--color-background) 0%, var(--color-background-alt) 100%);
 }
 
 #root {
