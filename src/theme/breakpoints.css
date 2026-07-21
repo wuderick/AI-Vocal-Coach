@@ -1,0 +1,27 @@
+:root {
+  --breakpoint-mobile: 640px;
+  --breakpoint-tablet: 900px;
+  --breakpoint-desktop: 1200px;
+
+  --page-padding: 2rem;
+  --header-padding: 1rem;
+  --footer-padding: 1rem;
+  --nav-gap: 1rem;
+  --container-max-width: 1200px;
+}
+
+@media (max-width: var(--breakpoint-tablet)) {
+  :root {
+    --page-padding: 1.5rem;
+    --header-padding: 0.75rem;
+    --footer-padding: 0.75rem;
+  }
+}
+
+@media (max-width: var(--breakpoint-mobile)) {
+  :root {
+    --page-padding: 1rem;
+    --header-padding: 0.75rem;
+    --footer-padding: 0.75rem;
+  }
+}

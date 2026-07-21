@@ -1,7 +1,7 @@
 export function Footer() {
   return (
     <footer style={{
-      padding: 'var(--spacing-medium)',
+      padding: 'var(--footer-padding)',
       borderTop: '1px solid var(--color-border)',
       marginTop: 'auto',
       textAlign: 'center',

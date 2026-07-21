@@ -15,9 +15,9 @@ export const uiCardStyles: CSSProperties = {
 
 export const uiContainerStyles: CSSProperties = {
   width: '100%',
-  maxWidth: '1200px',
+  maxWidth: 'var(--container-max-width)',
   margin: '0 auto',
-  padding: 'var(--spacing-medium)',
+  padding: 'var(--page-padding)',
 };
 
 export const uiSectionStyles: CSSProperties = {
