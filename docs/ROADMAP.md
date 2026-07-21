@@ -10,8 +10,8 @@
 - Task 007: Design System Components
 - Task 008: Application State Foundation
 - Task 009: Settings
+ - Task 010: Microphone Permission Foundation
 
 ## Next Planned Tasks
-- Task 010: Audio Recorder
 - Task 011: Waveform Viewer
 - Task 012: Audio Player

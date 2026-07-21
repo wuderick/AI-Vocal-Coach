@@ -53,3 +53,34 @@ Use `useSettingsState` to abstract state access and actions, keeping the page co
 #### Trade-offs
 - Simple hook-based state access may need more specialization if the settings page grows
 - The page remains tied to context-driven state rather than isolated local state for every control
+
+## ADR-010 — Browser API must be wrapped in Service Layer
+
+### Status
+Accepted
+
+### Context
+Browser platform APIs such as `navigator.mediaDevices` and `navigator.permissions` are environment-specific, can behave differently across browsers, and interact with hardware (microphone). Direct usage in components or hooks complicates testing, increases surface area for runtime errors, and ties UI code to platform details.
+
+### Decision
+All direct access to browser audio and permission APIs will be implemented inside a dedicated service layer (for example, `src/services/audio/microphoneService.ts`).
+
+Rules:
+- UI components (including `Settings` components) MUST NOT call `navigator` APIs directly.
+- Hooks (e.g. `useMicrophonePermission`) MUST only interact with `AppState` and `AppState` actions; they must not import or call service functions directly.
+- Only `AppStateProvider` is allowed to call the service layer. Provider actions are the single trusted bridge between services and global state.
+
+### Rationale
+- Testability: Services centralize browser API usage so tests can mock global objects (e.g. `navigator`) in a single place; UI and hooks can be tested without touching hardware.
+- Isolation: Decouples UI from platform-specific side-effects, enabling safer state updates and clearer separation of concerns.
+- Maintainability: Service interfaces provide a stable contract that can be adapted if browser APIs change or if the platform moves (e.g. native desktop app or different permission model).
+
+### Consequences
+- Benefits:
+	- Easier, deterministic unit tests for hooks and components; no real hardware access required.
+	- Centralized error handling and API feature-detection.
+	- Clear migration path for alternative implementations (mock service, native bridge).
+- Trade-offs:
+	- Slight indirection: developer must look into service layer for API behavior.
+	- Provider must be extended to expose service-driven actions, adding complexity to the global state layer.
+

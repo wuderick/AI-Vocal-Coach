@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AppState, AppStateActions } from './types';
+import { AppState, AppStateActions, MicrophonePermission } from './types';
 import { AppStateContext } from './AppStateContext';
 import { initialAppState } from './appState';
+import * as microphoneService from '../services/audio/microphoneService';
 
 function resolveThemeMode(theme: AppState['theme']): 'light' | 'dark' {
   if (theme === 'light' || theme === 'dark') {
@@ -41,6 +42,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setRecordingState: (recordingState: AppState['recordingState']) => setState((current) => ({ ...current, recordingState })),
     setMicrophonePermission: (microphonePermission: AppState['microphonePermission']) =>
       setState((current) => ({ ...current, microphonePermission })),
+    refreshMicrophonePermission: async () => {
+      const status = await microphoneService.getPermissionStatus();
+      setState((current) => ({ ...current, microphonePermission: status as MicrophonePermission }));
+    },
+    requestMicrophonePermission: async () => {
+      const status = await microphoneService.requestPermission();
+      setState((current) => ({ ...current, microphonePermission: status as MicrophonePermission }));
+    },
     setAutoSaveRecording: (enabled: boolean) => setState((current) => ({ ...current, autoSaveRecording: enabled })),
     updateCurrentSession: (updater: (currentSession: AppState['currentSession']) => AppState['currentSession']) =>
       setState((current) => ({ ...current, currentSession: updater(current.currentSession) })),

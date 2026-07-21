@@ -9,7 +9,7 @@ export const initialCurrentSessionState: CurrentSessionState = {
 export const initialAppState: AppState = {
   theme: 'system',
   recordingState: 'idle',
-  microphonePermission: 'unknown',
+  microphonePermission: 'prompt',
   currentSession: initialCurrentSessionState,
   autoSaveRecording: true,
 };
@@ -27,5 +27,5 @@ export function createAppState(overrides: Partial<AppState> = {}): AppState {
 
 export const themeModes: ThemeMode[] = ['system', 'light', 'dark'];
 export const recordingStates: RecordingState[] = ['idle', 'recording', 'paused', 'stopped'];
-export const microphonePermissions: MicrophonePermission[] = ['unknown', 'granted', 'denied'];
+export const microphonePermissions: MicrophonePermission[] = ['prompt', 'granted', 'denied', 'unsupported'];
 export const analysisStatuses: AnalysisStatus[] = ['idle', 'processing', 'completed', 'failed'];

@@ -1,6 +1,6 @@
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type RecordingState = 'idle' | 'recording' | 'paused' | 'stopped';
-export type MicrophonePermission = 'unknown' | 'granted' | 'denied';
+export type MicrophonePermission = 'unsupported' | 'prompt' | 'granted' | 'denied';
 export type AnalysisStatus = 'idle' | 'processing' | 'completed' | 'failed';
 
 export interface CurrentSessionState {
@@ -21,6 +21,8 @@ export interface AppStateActions {
   setTheme: (theme: ThemeMode) => void;
   setRecordingState: (recordingState: RecordingState) => void;
   setMicrophonePermission: (permission: MicrophonePermission) => void;
+  refreshMicrophonePermission: () => Promise<void>;
+  requestMicrophonePermission: () => Promise<void>;
   setAutoSaveRecording: (enabled: boolean) => void;
   updateCurrentSession: (updater: (currentSession: CurrentSessionState) => CurrentSessionState) => void;
   resetSettings: () => void;

@@ -5,6 +5,7 @@ import { ThemeSelector } from '../components/settings/ThemeSelector';
 import { AutoSaveRow } from '../components/settings/AutoSaveRow';
 import { DeveloperPanel } from '../components/settings/DeveloperPanel';
 import { ResetSection } from '../components/settings/ResetSection';
+import { MicrophoneCard } from '../components/settings/MicrophoneCard';
 
 export function SettingsPage() {
   const {
@@ -41,6 +42,7 @@ export function SettingsPage() {
                 analysisStatus={analysisStatus}
                 currentRecordingId={currentRecordingId}
               />
+              <MicrophoneCard />
               <ResetSection onReset={resetSettings} />
             </div>
           </Section>
