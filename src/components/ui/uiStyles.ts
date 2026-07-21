@@ -135,3 +135,159 @@ export const uiBadgeVariantStyles = {
     borderColor: 'transparent',
   },
 };
+
+export const uiModalOverlayStyles: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(7, 17, 31, 0.65)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 'var(--page-padding)',
+  zIndex: 1000,
+};
+
+export const uiModalStyles: CSSProperties = {
+  width: '100%',
+  maxWidth: '40rem',
+  background: 'var(--color-background-alt)',
+  border: '1px solid var(--color-border)',
+  borderRadius: 'var(--radius-large)',
+  boxShadow: 'var(--shadow-popup)',
+  padding: 'var(--spacing-large)',
+  color: 'var(--color-text-primary)',
+};
+
+export const uiModalTitleStyles: CSSProperties = {
+  margin: 0,
+  marginBottom: 'var(--spacing-medium)',
+  fontSize: '1.25rem',
+};
+
+export const uiModalCloseButtonStyles: CSSProperties = {
+  position: 'absolute',
+  top: 'var(--spacing-medium)',
+  right: 'var(--spacing-medium)',
+  background: 'transparent',
+  border: 'none',
+  color: 'var(--color-text-secondary)',
+  cursor: 'pointer',
+  fontSize: '1rem',
+};
+
+export const uiDialogActionsStyles: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: 'var(--spacing-small)',
+  marginTop: 'var(--spacing-large)',
+};
+
+export const uiDropdownStyles: CSSProperties = {
+  position: 'relative',
+  display: 'inline-block',
+  width: '100%',
+};
+
+export const uiDropdownButtonStyles: CSSProperties = {
+  ...uiButtonStyles,
+  width: '100%',
+  justifyContent: 'space-between',
+};
+
+export const uiDropdownMenuStyles: CSSProperties = {
+  position: 'absolute',
+  top: '100%',
+  left: 0,
+  right: 0,
+  background: 'var(--color-surface)',
+  border: '1px solid var(--color-border)',
+  borderRadius: 'var(--radius-medium)',
+  marginTop: 'var(--spacing-xsmall)',
+  zIndex: 100,
+  maxHeight: '16rem',
+  overflowY: 'auto',
+};
+
+export const uiDropdownItemStyles: CSSProperties = {
+  padding: 'var(--spacing-small)',
+  cursor: 'pointer',
+  color: 'var(--color-text-primary)',
+  background: 'transparent',
+  border: 'none',
+  textAlign: 'left',
+  width: '100%',
+};
+
+export const uiTabsListStyles: CSSProperties = {
+  display: 'flex',
+  gap: 'var(--spacing-small)',
+  borderBottom: '1px solid var(--color-border)',
+  marginBottom: 'var(--spacing-medium)',
+};
+
+export const uiTabStyles: CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  borderBottom: '2px solid transparent',
+  padding: 'var(--spacing-small) var(--spacing-medium)',
+  color: 'var(--color-text-secondary)',
+  cursor: 'pointer',
+};
+
+export const uiTabActiveStyles: CSSProperties = {
+  color: 'var(--color-text-primary)',
+  borderBottom: '2px solid var(--color-accent)',
+};
+
+export const uiTabPanelStyles: CSSProperties = {
+  outline: 'none',
+};
+
+export const uiProgressTrackStyles: CSSProperties = {
+  width: '100%',
+  height: '0.75rem',
+  borderRadius: 'var(--radius-medium)',
+  background: 'var(--color-surface)',
+  overflow: 'hidden',
+};
+
+export const uiProgressBarStyles: CSSProperties = {
+  height: '100%',
+  background: 'var(--color-accent)',
+  transition: 'width var(--transition-normal)',
+};
+
+export const uiSwitchStyles: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: 'var(--spacing-xsmall)',
+  background: 'var(--color-surface)',
+  borderRadius: '999px',
+  border: '1px solid var(--color-border)',
+  cursor: 'pointer',
+};
+
+export const uiSwitchThumbStyles: CSSProperties = {
+  width: '1.25rem',
+  height: '1.25rem',
+  borderRadius: '50%',
+  background: 'var(--color-background)',
+  transition: 'transform var(--transition-normal)',
+};
+
+export const uiSkeletonStyles: CSSProperties = {
+  background: 'var(--color-surface)',
+  borderRadius: 'var(--radius-small)',
+  animation: 'pulse 1.5s ease-in-out infinite',
+};
+
+export const uiTooltipStyles: CSSProperties = {
+  position: 'absolute',
+  background: 'var(--color-background-alt)',
+  border: '1px solid var(--color-border)',
+  borderRadius: 'var(--radius-medium)',
+  padding: 'var(--spacing-small)',
+  color: 'var(--color-text-primary)',
+  whiteSpace: 'nowrap',
+  zIndex: 200,
+};
