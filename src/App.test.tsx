@@ -11,7 +11,7 @@ describe('App routing', () => {
     );
 
     expect(screen.getByRole('heading', { level: 1, name: /project initialized successfully/i })).toBeInTheDocument();
-    expect(screen.getByText(/ai vocal coach/i)).toBeInTheDocument();
+    expect(screen.getByText('This foundation is ready for the next development milestones.')).toBeInTheDocument();
   });
 
   it('renders Not Found for an unknown route', () => {
