@@ -1,1 +1,1 @@
-{"root":["./src/app.test.tsx","./src/app.tsx","./src/main.tsx","./src/pages/homepage.tsx","./src/test/setup.ts"],"version":"5.9.3"}
+{"root":["./src/app.test.tsx","./src/app.tsx","./src/main.tsx","./src/app/routes.tsx","./src/pages/dashboardpage.tsx","./src/pages/homepage.tsx","./src/pages/notfoundpage.tsx","./src/pages/settingspage.tsx","./src/test/setup.ts"],"version":"5.9.3"}
