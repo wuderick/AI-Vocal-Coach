@@ -1,9 +1,18 @@
 import { AppState, AnalysisStatus, CurrentSessionState, MicrophonePermission, RecordingState, ThemeMode } from './types';
+import type { AudioCaptureStatus } from './types';
+import type { AudioCaptureRuntime } from '../services/audio/audioCaptureService';
 
 export const initialCurrentSessionState: CurrentSessionState = {
   currentRecordingId: null,
   selectedAudioFile: null,
   analysisStatus: 'idle',
+};
+
+export const initialAudioCaptureStatus: AudioCaptureStatus = 'idle';
+
+export const initialAudioCaptureRuntime: AudioCaptureRuntime = {
+  audioContext: null,
+  mediaStream: null,
 };
 
 export const initialAppState: AppState = {
@@ -12,6 +21,9 @@ export const initialAppState: AppState = {
   microphonePermission: 'prompt',
   audioInputDevices: [],
   selectedAudioInputId: null,
+  audioCaptureStatus: initialAudioCaptureStatus,
+  audioCaptureErrorCode: null,
+  audioCaptureRuntime: initialAudioCaptureRuntime,
   currentSession: initialCurrentSessionState,
   autoSaveRecording: true,
 };

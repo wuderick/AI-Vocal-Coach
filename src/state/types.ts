@@ -1,9 +1,11 @@
 import type { AudioInputDevice } from '../types/audio';
+import type { AudioCaptureErrorCode, AudioCaptureRuntime } from '../services/audio/audioCaptureService';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type RecordingState = 'idle' | 'recording' | 'paused' | 'stopped';
 export type MicrophonePermission = 'unsupported' | 'prompt' | 'granted' | 'denied';
 export type AnalysisStatus = 'idle' | 'processing' | 'completed' | 'failed';
+export type AudioCaptureStatus = 'idle' | 'starting' | 'active' | 'stopping' | 'error';
 
 export interface CurrentSessionState {
   currentRecordingId: string | null;
@@ -17,6 +19,9 @@ export interface AppState {
   microphonePermission: MicrophonePermission;
   audioInputDevices: AudioInputDevice[];
   selectedAudioInputId: string | null;
+  audioCaptureStatus: AudioCaptureStatus;
+  audioCaptureErrorCode: AudioCaptureErrorCode | null;
+  audioCaptureRuntime: AudioCaptureRuntime;
   currentSession: CurrentSessionState;
   autoSaveRecording: boolean;
 }
@@ -29,6 +34,8 @@ export interface AppStateActions {
   requestMicrophonePermission: () => Promise<void>;
   refreshAudioDevices: () => Promise<void>;
   selectAudioDevice: (deviceId: string) => void;
+  startAudioCapture: () => Promise<void>;
+  stopAudioCapture: () => Promise<void>;
   setAutoSaveRecording: (enabled: boolean) => void;
   updateCurrentSession: (updater: (currentSession: CurrentSessionState) => CurrentSessionState) => void;
   resetSettings: () => void;

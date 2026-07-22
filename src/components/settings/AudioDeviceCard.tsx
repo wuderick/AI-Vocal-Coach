@@ -1,13 +1,33 @@
 import { Card } from '../ui/Card';
 import { useAudioDevices } from '../../hooks/useAudioDevices';
 import { Button } from '../ui/Button';
+import { useAudioCapture } from '../../hooks/useAudioCapture';
+
+function getCaptureStatusLabel(status: 'idle' | 'starting' | 'active' | 'stopping' | 'error'): string {
+  if (status === 'idle') return '未啟動';
+  if (status === 'starting') return '啟動中';
+  if (status === 'active') return '啟動中（收音中）';
+  if (status === 'stopping') return '停止中';
+  return '錯誤';
+}
 
 export function AudioDeviceCard() {
-  const { audioInputDevices, selectedAudioInputId, selectAudioDevice, refreshAudioDevices } = useAudioDevices();
+  const { audioInputDevices, selectedAudioInputId, isDeviceSelectionDisabled, selectAudioDevice, refreshAudioDevices } = useAudioDevices();
+  const { captureStatus, captureErrorMessage, startAudioCapture, stopAudioCapture } = useAudioCapture();
+  const isStartDisabled = captureStatus === 'starting' || captureStatus === 'stopping' || captureStatus === 'active';
+  const isStopDisabled = captureStatus === 'starting' || captureStatus === 'stopping' || captureStatus === 'idle' || captureStatus === 'error';
 
   return (
     <Card title="Audio Input Device">
       <div style={{ display: 'grid', gap: 'var(--spacing-medium)' }}>
+        <div style={{ display: 'grid', gap: 'var(--spacing-small)' }}>
+          <strong>Capture 狀態：{getCaptureStatusLabel(captureStatus)}</strong>
+          <div style={{ display: 'flex', gap: 'var(--spacing-small)' }}>
+            <Button disabled={isStartDisabled} onClick={() => void startAudioCapture()}>Start</Button>
+            <Button disabled={isStopDisabled} onClick={() => void stopAudioCapture()}>Stop</Button>
+          </div>
+          {captureErrorMessage ? <p role="alert">{captureErrorMessage}</p> : null}
+        </div>
         {audioInputDevices.length === 0 ? (
           <p>No audio input devices found.</p>
         ) : audioInputDevices.length === 1 ? (
@@ -18,6 +38,7 @@ export function AudioDeviceCard() {
             <select
               value={selectedAudioInputId ?? ''}
               onChange={(event) => selectAudioDevice(event.target.value)}
+              disabled={isDeviceSelectionDisabled}
               style={{ width: '100%', padding: 'var(--spacing-xsmall)' }}
             >
               {audioInputDevices.map((device) => (
