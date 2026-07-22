@@ -31,6 +31,7 @@ export function useAudioCapture() {
     captureErrorCode: state.audioCaptureErrorCode,
     captureErrorMessage: state.audioCaptureErrorCode ? getAudioCaptureErrorMessage(state.audioCaptureErrorCode) : null,
     isCaptureActive: state.audioCaptureStatus === 'active',
+    isAudioGraphReady: Boolean(state.audioGraphRuntime.sourceNode && state.audioGraphRuntime.analyserNode),
     startAudioCapture,
     stopAudioCapture,
   };

@@ -1,5 +1,6 @@
 import type { AudioInputDevice } from '../types/audio';
 import type { AudioCaptureErrorCode, AudioCaptureRuntime } from '../services/audio/audioCaptureService';
+import type { AudioGraphRuntime } from '../services/audio/audioGraphService';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type RecordingState = 'idle' | 'recording' | 'paused' | 'stopped';
@@ -22,6 +23,7 @@ export interface AppState {
   audioCaptureStatus: AudioCaptureStatus;
   audioCaptureErrorCode: AudioCaptureErrorCode | null;
   audioCaptureRuntime: AudioCaptureRuntime;
+  audioGraphRuntime: AudioGraphRuntime;
   currentSession: CurrentSessionState;
   autoSaveRecording: boolean;
 }

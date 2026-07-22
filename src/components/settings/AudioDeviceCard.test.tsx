@@ -4,6 +4,7 @@ import { AppStateProvider } from '../../state/AppStateProvider';
 import { AudioDeviceCard } from './AudioDeviceCard';
 import * as audioDeviceService from '../../services/audio/audioDeviceService';
 import * as audioCaptureService from '../../services/audio/audioCaptureService';
+import * as audioGraphService from '../../services/audio/audioGraphService';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -32,6 +33,14 @@ describe('AudioDeviceCard', () => {
     vi.restoreAllMocks();
     vi.spyOn(audioCaptureService, 'startAudioCapture').mockResolvedValue(createRuntime());
     vi.spyOn(audioCaptureService, 'stopAudioCapture').mockResolvedValue(createRuntime());
+    vi.spyOn(audioGraphService, 'initializeAudioGraph').mockReturnValue({
+      sourceNode: { disconnect: vi.fn() } as unknown as MediaStreamAudioSourceNode,
+      analyserNode: { disconnect: vi.fn() } as unknown as AnalyserNode,
+    });
+    vi.spyOn(audioGraphService, 'disposeAudioGraph').mockReturnValue({
+      sourceNode: null,
+      analyserNode: null,
+    });
   });
 
   it('shows empty state when no devices exist', async () => {

@@ -6,6 +6,7 @@ import { useAppStateContext } from '../state/AppStateContext';
 import { useAudioCapture } from './useAudioCapture';
 import * as audioCaptureService from '../services/audio/audioCaptureService';
 import * as audioDeviceService from '../services/audio/audioDeviceService';
+import * as audioGraphService from '../services/audio/audioGraphService';
 
 vi.mock('../services/audio/audioCaptureService', async () => {
   const actual = await vi.importActual<typeof import('../services/audio/audioCaptureService')>('../services/audio/audioCaptureService');
@@ -22,6 +23,15 @@ vi.mock('../services/audio/audioDeviceService', async () => {
     ...actual,
     getAudioInputDevices: vi.fn().mockResolvedValue([]),
     subscribeToDeviceChanges: vi.fn(() => () => {}),
+  };
+});
+
+vi.mock('../services/audio/audioGraphService', async () => {
+  const actual = await vi.importActual<typeof import('../services/audio/audioGraphService')>('../services/audio/audioGraphService');
+  return {
+    ...actual,
+    initializeAudioGraph: vi.fn(),
+    disposeAudioGraph: vi.fn(),
   };
 });
 
@@ -52,7 +62,7 @@ function createRuntime(overrides: Partial<audioCaptureService.AudioCaptureRuntim
 
 function TestCaptureHarness() {
   const { state, actions } = useAppStateContext();
-  const { startAudioCapture, stopAudioCapture } = useAudioCapture();
+  const { startAudioCapture, stopAudioCapture, isAudioGraphReady } = useAudioCapture();
 
   return (
     <div>
@@ -60,6 +70,9 @@ function TestCaptureHarness() {
       <div data-testid="error">{state.audioCaptureErrorCode ?? 'null'}</div>
       <div data-testid="selected">{state.selectedAudioInputId ?? 'null'}</div>
       <div data-testid="runtime-stream">{String(Boolean(state.audioCaptureRuntime.mediaStream))}</div>
+      <div data-testid="runtime-graph-source">{String(Boolean(state.audioGraphRuntime.sourceNode))}</div>
+      <div data-testid="runtime-graph-analyser">{String(Boolean(state.audioGraphRuntime.analyserNode))}</div>
+      <div data-testid="graph-ready">{String(isAudioGraphReady)}</div>
       <button data-testid="start" onClick={() => void startAudioCapture()}>start</button>
       <button data-testid="stop" onClick={() => void stopAudioCapture()}>stop</button>
       <button data-testid="refresh-devices" onClick={() => void actions.refreshAudioDevices()}>refresh devices</button>
@@ -87,12 +100,21 @@ describe('useAudioCapture + AppStateProvider', () => {
   const mockedStartAudioCapture = vi.mocked(audioCaptureService.startAudioCapture);
   const mockedStopAudioCapture = vi.mocked(audioCaptureService.stopAudioCapture);
   const mockedGetAudioInputDevices = vi.mocked(audioDeviceService.getAudioInputDevices);
+  const mockedInitializeAudioGraph = vi.mocked(audioGraphService.initializeAudioGraph);
+  const mockedDisposeAudioGraph = vi.mocked(audioGraphService.disposeAudioGraph);
+
+  const graphRuntime = {
+    sourceNode: { disconnect: vi.fn() } as unknown as MediaStreamAudioSourceNode,
+    analyserNode: { disconnect: vi.fn() } as unknown as AnalyserNode,
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockedGetAudioInputDevices.mockResolvedValue([]);
     mockedStartAudioCapture.mockResolvedValue(createRuntime());
     mockedStopAudioCapture.mockResolvedValue(createRuntime());
+    mockedInitializeAudioGraph.mockReturnValue(graphRuntime);
+    mockedDisposeAudioGraph.mockReturnValue({ sourceNode: null, analyserNode: null });
   });
 
   afterEach(() => {
@@ -129,6 +151,8 @@ describe('useAudioCapture + AppStateProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
     await waitFor(() => expect(screen.getByTestId('runtime-stream')).toHaveTextContent('true'));
+    await waitFor(() => expect(screen.getByTestId('graph-ready')).toHaveTextContent('true'));
+    expect(mockedInitializeAudioGraph).toHaveBeenCalledTimes(1);
   });
 
   it('passes selectedAudioInputId to startAudioCapture', async () => {
@@ -244,6 +268,8 @@ describe('useAudioCapture + AppStateProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('idle'));
     expect(screen.getByTestId('runtime-stream')).toHaveTextContent('false');
+    await waitFor(() => expect(screen.getByTestId('graph-ready')).toHaveTextContent('false'));
+    expect(mockedDisposeAudioGraph).toHaveBeenCalled();
   });
 
   it('ignores duplicate start while status is starting', async () => {
@@ -376,7 +402,9 @@ describe('useAudioCapture + AppStateProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('idle'));
     await waitFor(() => expect(screen.getByTestId('runtime-stream')).toHaveTextContent('false'));
+    await waitFor(() => expect(screen.getByTestId('graph-ready')).toHaveTextContent('false'));
     expect(stopTrack).toHaveBeenCalledTimes(1);
+    expect(mockedDisposeAudioGraph).toHaveBeenCalled();
   });
 
   it('does not update state after unmount when pending start resolves', async () => {
@@ -475,5 +503,57 @@ describe('useAudioCapture + AppStateProvider', () => {
 
     unmount();
     await waitFor(() => expect(stopTrack).toHaveBeenCalledTimes(1));
+    expect(mockedDisposeAudioGraph).toHaveBeenCalled();
+  });
+
+  it('stores graph runtime in state after successful start', async () => {
+    const stream = { getTracks: () => [] } as unknown as MediaStream;
+    mockedStartAudioCapture.mockResolvedValueOnce(createRuntime({ mediaStream: stream, audioContext: {} as AudioContext }));
+
+    renderCaptureHarness();
+
+    fireEvent.click(screen.getByTestId('start'));
+
+    await waitFor(() => expect(screen.getByTestId('runtime-graph-source')).toHaveTextContent('true'));
+    await waitFor(() => expect(screen.getByTestId('runtime-graph-analyser')).toHaveTextContent('true'));
+  });
+
+  it('keeps old graph runtime when new graph initialization fails', async () => {
+    const stream1 = { getTracks: () => [] } as unknown as MediaStream;
+    const stream2Stop = vi.fn();
+    const stream2 = { getTracks: () => [{ stop: stream2Stop }] } as unknown as MediaStream;
+
+    mockedStartAudioCapture
+      .mockResolvedValueOnce(createRuntime({ mediaStream: stream1, audioContext: {} as AudioContext }))
+      .mockResolvedValueOnce(createRuntime({ mediaStream: stream2, audioContext: {} as AudioContext }));
+
+    mockedInitializeAudioGraph
+      .mockReturnValueOnce(graphRuntime)
+      .mockImplementationOnce(() => {
+        throw new audioGraphService.AudioGraphError('graph-init-failed', 'graph failure');
+      });
+
+    mockedStopAudioCapture.mockImplementation(async (runtime) => {
+      audioCaptureService.stopMediaStream(runtime.mediaStream);
+      return {
+        audioContext: runtime.audioContext,
+        mediaStream: null,
+      };
+    });
+
+    renderCaptureHarness();
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+    expect(screen.getByTestId('graph-ready')).toHaveTextContent('true');
+
+    const disposeCallCountBeforeFailure = mockedDisposeAudioGraph.mock.calls.length;
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('error'));
+
+    expect(screen.getByTestId('graph-ready')).toHaveTextContent('true');
+    expect(stream2Stop).toHaveBeenCalledTimes(1);
+    expect(mockedDisposeAudioGraph).toHaveBeenCalledTimes(disposeCallCountBeforeFailure);
   });
 });
