@@ -10,6 +10,8 @@ export const initialAppState: AppState = {
   theme: 'system',
   recordingState: 'idle',
   microphonePermission: 'prompt',
+  audioInputDevices: [],
+  selectedAudioInputId: null,
   currentSession: initialCurrentSessionState,
   autoSaveRecording: true,
 };

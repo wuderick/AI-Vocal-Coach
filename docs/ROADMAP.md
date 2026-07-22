@@ -13,5 +13,5 @@
  - Task 010: Microphone Permission Foundation
 
 ## Next Planned Tasks
-- Task 011: Waveform Viewer
+- Task 011: Audio Device Foundation (session-only device selection)
 - Task 012: Audio Player

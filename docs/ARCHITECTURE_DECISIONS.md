@@ -84,3 +84,24 @@ Rules:
 	- Slight indirection: developer must look into service layer for API behavior.
 	- Provider must be extended to expose service-driven actions, adding complexity to the global state layer.
 
+## ADR-011 — Audio Device Selection Scope
+
+### Status
+Accepted
+
+### Context
+Audio device selection requires browser device enumeration and devicechange handling, but the current app scope is session-only and does not yet support persistent cross-page reload state.
+
+### Decision
+Implement audio device enumeration and selected device state in the AppState layer.
+Use a service for browser API access, hook into provider actions, and keep UI components unaware of direct `navigator.mediaDevices` usage.
+The selected device is stored in session state only; persistence across page reloads is deferred.
+
+### Consequences
+- Benefits:
+	- Clear separation between browser API access, global state, and UI.
+	- The app can detect device changes and update selection without exposing platform details.
+- Trade-offs:
+	- The selected device is not retained after a hard refresh until persistence is added.
+	- Future work is required to integrate settings persistence for audio device selection.
+
