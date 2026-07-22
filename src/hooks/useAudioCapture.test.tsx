@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { AppStateProvider } from '../state/AppStateProvider';
 import { useAppStateContext } from '../state/AppStateContext';
 import { useAudioCapture } from './useAudioCapture';
@@ -70,9 +71,25 @@ function createRuntime(overrides: Partial<audioCaptureService.AudioCaptureRuntim
   };
 }
 
+let latestUpdateFrequencyBuffer: (() => Float32Array) | null = null;
+let latestGraphRuntimeRef: audioGraphService.AudioGraphRuntime | null = null;
+let latestFrequencyBufferRuntimeRef: frequencyBufferService.FrequencyBufferRuntime | null = null;
+let renderCount = 0;
+
 function TestCaptureHarness() {
   const { state, actions } = useAppStateContext();
-  const { startAudioCapture, stopAudioCapture, isAudioGraphReady, isFrequencyBufferReady } = useAudioCapture();
+  const {
+    startAudioCapture,
+    stopAudioCapture,
+    updateFrequencyBuffer,
+    isAudioGraphReady,
+    isFrequencyBufferReady,
+  } = useAudioCapture();
+
+  renderCount += 1;
+  latestUpdateFrequencyBuffer = updateFrequencyBuffer;
+  latestGraphRuntimeRef = state.audioGraphRuntime;
+  latestFrequencyBufferRuntimeRef = state.audioFrequencyBufferRuntime;
 
   return (
     <div>
@@ -116,20 +133,38 @@ describe('useAudioCapture + AppStateProvider', () => {
   const mockedDisposeAudioGraph = vi.mocked(audioGraphService.disposeAudioGraph);
   const mockedInitializeFrequencyBuffer = vi.mocked(frequencyBufferService.initializeFrequencyBuffer);
   const mockedDisposeFrequencyBuffer = vi.mocked(frequencyBufferService.disposeFrequencyBuffer);
+  let mockedReadFrequencyData: MockInstance;
+  let mockedGetFloatFrequencyData: ReturnType<typeof vi.fn>;
 
-  const graphRuntime = {
-    sourceNode: { disconnect: vi.fn() } as unknown as MediaStreamAudioSourceNode,
-    analyserNode: { disconnect: vi.fn() } as unknown as AnalyserNode,
-  };
-
-  const frequencyBufferRuntime = {
-    frequencyData: new Float32Array(4),
-    fftSize: 8,
-    frequencyBinCount: 4,
-  };
+  let graphRuntime: audioGraphService.AudioGraphRuntime;
+  let frequencyBufferRuntime: frequencyBufferService.FrequencyBufferRuntime;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    latestUpdateFrequencyBuffer = null;
+    latestGraphRuntimeRef = null;
+    latestFrequencyBufferRuntimeRef = null;
+    renderCount = 0;
+
+    mockedGetFloatFrequencyData = vi.fn((buffer: Float32Array) => {
+      buffer[0] = buffer[0] + 1;
+      buffer[1] = buffer[1] + 2;
+    });
+
+    graphRuntime = {
+      sourceNode: { disconnect: vi.fn() } as unknown as MediaStreamAudioSourceNode,
+      analyserNode: {
+        disconnect: vi.fn(),
+        getFloatFrequencyData: mockedGetFloatFrequencyData,
+      } as unknown as AnalyserNode,
+    };
+
+    frequencyBufferRuntime = {
+      frequencyData: new Float32Array(4),
+      fftSize: 8,
+      frequencyBinCount: 4,
+    };
+
     mockedGetAudioInputDevices.mockResolvedValue([]);
     mockedStartAudioCapture.mockResolvedValue(createRuntime());
     mockedStopAudioCapture.mockResolvedValue(createRuntime());
@@ -137,6 +172,7 @@ describe('useAudioCapture + AppStateProvider', () => {
     mockedDisposeAudioGraph.mockReturnValue({ sourceNode: null, analyserNode: null });
     mockedInitializeFrequencyBuffer.mockReturnValue(frequencyBufferRuntime);
     mockedDisposeFrequencyBuffer.mockReturnValue({ frequencyData: null, fftSize: 0, frequencyBinCount: 0 });
+    mockedReadFrequencyData = vi.spyOn(frequencyBufferService, 'readFrequencyData');
   });
 
   afterEach(() => {
@@ -316,6 +352,202 @@ describe('useAudioCapture + AppStateProvider', () => {
     await waitFor(() => expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('false'));
     expect(mockedDisposeAudioGraph).toHaveBeenCalled();
     expect(mockedDisposeFrequencyBuffer).toHaveBeenCalled();
+  });
+
+  it('updates and returns frequency data in active state', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const update = latestUpdateFrequencyBuffer;
+    expect(update).not.toBeNull();
+
+    const result = update!();
+
+    expect(result).toBe(frequencyBufferRuntime.frequencyData);
+    expect(mockedReadFrequencyData).toHaveBeenCalledWith({
+      analyserNode: graphRuntime.analyserNode,
+      runtime: frequencyBufferRuntime,
+    });
+    expect(mockedGetFloatFrequencyData).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the same Float32Array across repeated updates and does not reallocate buffer', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const update = latestUpdateFrequencyBuffer;
+    expect(update).not.toBeNull();
+
+    const first = update!();
+    const second = update!();
+    const third = update!();
+
+    expect(first).toBe(frequencyBufferRuntime.frequencyData);
+    expect(second).toBe(frequencyBufferRuntime.frequencyData);
+    expect(third).toBe(frequencyBufferRuntime.frequencyData);
+    expect(first).toBe(second);
+    expect(second).toBe(third);
+    expect(mockedGetFloatFrequencyData).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not replace graph runtime or frequency buffer runtime during updates', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const update = latestUpdateFrequencyBuffer;
+    expect(update).not.toBeNull();
+
+    const graphRuntimeBefore = latestGraphRuntimeRef;
+    const frequencyBufferRuntimeBefore = latestFrequencyBufferRuntimeRef;
+
+    update!();
+    update!();
+
+    expect(latestGraphRuntimeRef).toBe(graphRuntimeBefore);
+    expect(latestFrequencyBufferRuntimeRef).toBe(frequencyBufferRuntimeBefore);
+    expect(latestFrequencyBufferRuntimeRef?.frequencyData).toBe(frequencyBufferRuntimeBefore?.frequencyData ?? null);
+  });
+
+  it('does not trigger provider setState on successful update', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const update = latestUpdateFrequencyBuffer;
+    expect(update).not.toBeNull();
+
+    const renderCountBefore = renderCount;
+    update!();
+
+    expect(renderCount).toBe(renderCountBefore);
+  });
+
+  it('throws invalid-runtime when update is called while idle', () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    const update = latestUpdateFrequencyBuffer;
+    expect(update).not.toBeNull();
+
+    let caught: unknown;
+    try {
+      update!();
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(frequencyBufferService.FrequencyBufferError);
+    expect((caught as frequencyBufferService.FrequencyBufferError).code).toBe('invalid-runtime');
+  });
+
+  it('throws invalid-runtime when update is called after stop', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    fireEvent.click(screen.getByTestId('stop'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('idle'));
+
+    const update = latestUpdateFrequencyBuffer;
+    expect(update).not.toBeNull();
+
+    let caught: unknown;
+    try {
+      update!();
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(frequencyBufferService.FrequencyBufferError);
+    expect((caught as frequencyBufferService.FrequencyBufferError).code).toBe('invalid-runtime');
+  });
+
+  it('throws invalid-runtime when update is called after reset', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    fireEvent.click(screen.getByTestId('reset-settings'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('idle'));
+
+    const update = latestUpdateFrequencyBuffer;
+    expect(update).not.toBeNull();
+
+    let caught: unknown;
+    try {
+      update!();
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(frequencyBufferService.FrequencyBufferError);
+    expect((caught as frequencyBufferService.FrequencyBufferError).code).toBe('invalid-runtime');
+  });
+
+  it('propagates service errors and preserves runtimes', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const update = latestUpdateFrequencyBuffer;
+    expect(update).not.toBeNull();
+
+    const graphRuntimeBefore = latestGraphRuntimeRef;
+    const frequencyBufferRuntimeBefore = latestFrequencyBufferRuntimeRef;
+    const disposeAudioGraphCallCountBefore = mockedDisposeAudioGraph.mock.calls.length;
+    const disposeFrequencyBufferCallCountBefore = mockedDisposeFrequencyBuffer.mock.calls.length;
+
+    mockedReadFrequencyData.mockImplementationOnce(() => {
+      throw new frequencyBufferService.FrequencyBufferError('invalid-runtime', 'forced-frequency-read-error');
+    });
+
+    expect(() => update!()).toThrowError('forced-frequency-read-error');
+    expect(latestGraphRuntimeRef).toBe(graphRuntimeBefore);
+    expect(latestFrequencyBufferRuntimeRef).toBe(frequencyBufferRuntimeBefore);
+    expect(mockedDisposeAudioGraph).toHaveBeenCalledTimes(disposeAudioGraphCallCountBefore);
+    expect(mockedDisposeFrequencyBuffer).toHaveBeenCalledTimes(disposeFrequencyBufferCallCountBefore);
+    expect(screen.getByTestId('status')).toHaveTextContent('active');
   });
 
   it('ignores duplicate start while status is starting', async () => {

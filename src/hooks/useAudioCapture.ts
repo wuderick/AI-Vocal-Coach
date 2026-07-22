@@ -26,6 +26,8 @@ export function useAudioCapture() {
     await actions.stopAudioCapture();
   }, [actions]);
 
+  const updateFrequencyBuffer = useCallback(() => actions.updateFrequencyBuffer(), [actions]);
+
   return {
     captureStatus: state.audioCaptureStatus,
     captureErrorCode: state.audioCaptureErrorCode,
@@ -37,5 +39,6 @@ export function useAudioCapture() {
       && state.audioFrequencyBufferRuntime.frequencyData.length > 0,
     startAudioCapture,
     stopAudioCapture,
+    updateFrequencyBuffer,
   };
 }

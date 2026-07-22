@@ -318,6 +318,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }));
       });
     },
+    updateFrequencyBuffer: () => frequencyBufferService.readFrequencyData({
+      analyserNode: graphRuntimeRef.current.analyserNode,
+      runtime: frequencyBufferRuntimeRef.current,
+    }),
   }), []);
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);

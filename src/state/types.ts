@@ -40,6 +40,7 @@ export interface AppStateActions {
   selectAudioDevice: (deviceId: string) => void;
   startAudioCapture: () => Promise<void>;
   stopAudioCapture: () => Promise<void>;
+  updateFrequencyBuffer: () => Float32Array;
   setAutoSaveRecording: (enabled: boolean) => void;
   updateCurrentSession: (updater: (currentSession: CurrentSessionState) => CurrentSessionState) => void;
   resetSettings: () => void;
