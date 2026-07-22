@@ -9,16 +9,47 @@ function createSineWave(
   sampleRate: number,
   durationSeconds: number,
   dcOffset = 0,
+  amplitude = 1,
 ): Float32Array {
   const sampleCount = Math.max(0, Math.floor(sampleRate * durationSeconds));
   const samples = new Float32Array(sampleCount);
 
   for (let index = 0; index < sampleCount; index += 1) {
     const time = index / sampleRate;
-    samples[index] = Math.sin(2 * Math.PI * frequency * time) + dcOffset;
+    samples[index] = (amplitude * Math.sin(2 * Math.PI * frequency * time)) + dcOffset;
   }
 
   return samples;
+}
+
+function createWhiteNoise(
+  sampleRate: number,
+  durationSeconds: number,
+  amplitude = 1,
+  seed = 12345,
+): Float32Array {
+  const sampleCount = Math.max(0, Math.floor(sampleRate * durationSeconds));
+  const samples = new Float32Array(sampleCount);
+
+  let state = seed >>> 0;
+  for (let index = 0; index < sampleCount; index += 1) {
+    state = ((1664525 * state) + 1013904223) >>> 0;
+    const normalized = (state / 0xFFFFFFFF) * 2 - 1;
+    samples[index] = amplitude * normalized;
+  }
+
+  return samples;
+}
+
+function addSignals(primary: Float32Array, secondary: Float32Array): Float32Array {
+  const length = Math.min(primary.length, secondary.length);
+  const mixed = new Float32Array(length);
+
+  for (let index = 0; index < length; index += 1) {
+    mixed[index] = primary[index] + secondary[index];
+  }
+
+  return mixed;
 }
 
 function expectFrequencyNear(actual: number | null, expected: number, toleranceHz = 5): void {
@@ -87,6 +118,18 @@ describe('pitchDetectionService', () => {
     expectFrequencyNear(result.frequency, 61, 1.5);
   });
 
+  it('strong 440Hz tone returns high confidence and voiced true', () => {
+    const sampleRate = 48000;
+    const result = detectPitch({
+      timeDomainData: createSineWave(440, sampleRate, 0.1),
+      sampleRate,
+    });
+
+    expectFrequencyNear(result.frequency, 440);
+    expect(result.confidence).toBeGreaterThanOrEqual(0.8);
+    expect(result.isVoiced).toBe(true);
+  });
+
   it('silence returns null', () => {
     const result = detectPitch({
       timeDomainData: new Float32Array(4096),
@@ -98,6 +141,46 @@ describe('pitchDetectionService', () => {
       confidence: 0,
       isVoiced: false,
     });
+  });
+
+  it('white noise returns low confidence or zero and isVoiced false', () => {
+    const sampleRate = 48000;
+    const result = detectPitch({
+      timeDomainData: createWhiteNoise(sampleRate, 0.1, 1),
+      sampleRate,
+    });
+
+    expect(result.confidence).toBeGreaterThanOrEqual(0);
+    expect(result.confidence).toBeLessThanOrEqual(0.2);
+    expect(result.isVoiced).toBe(false);
+  });
+
+  it('low-amplitude 440Hz returns null with zero confidence and unvoiced result', () => {
+    const sampleRate = 48000;
+    const result = detectPitch({
+      timeDomainData: createSineWave(440, sampleRate, 0.1, 0, 0.005),
+      sampleRate,
+    });
+
+    expect(result).toEqual({
+      frequency: null,
+      confidence: 0,
+      isVoiced: false,
+    });
+  });
+
+  it('440Hz with 5% white noise remains voiced and near 440Hz', () => {
+    const sampleRate = 48000;
+    const pure = createSineWave(440, sampleRate, 0.1, 0, 1);
+    const noise = createWhiteNoise(sampleRate, 0.1, 0.05);
+    const result = detectPitch({
+      timeDomainData: addSignals(pure, noise),
+      sampleRate,
+    });
+
+    expectFrequencyNear(result.frequency, 440, 4);
+    expect(result.isVoiced).toBe(true);
+    expect(result.confidence).toBeGreaterThan(0.5);
   });
 
   it('DC offset does not affect estimation', () => {

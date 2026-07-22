@@ -32,6 +32,13 @@ export interface DetectPitchOptions {
 const MIN_FREQUENCY = 60;
 const MAX_FREQUENCY = 1000;
 const NEAR_BEST_CORRELATION_RATIO = 0.98;
+const MIN_RMS = 0.01;
+const MIN_CONFIDENCE = 0.6;
+
+interface BestLagCandidate {
+  readonly lag: number;
+  readonly correlation: number;
+}
 
 function validateInput(options: DetectPitchOptions): void {
   if (options.timeDomainData.length <= 0) {
@@ -58,6 +65,17 @@ function removeDcOffset(timeDomainData: Float32Array): Float32Array {
   return centered;
 }
 
+function computeRms(signal: Float32Array): number {
+  let sumSquares = 0;
+
+  for (let index = 0; index < signal.length; index += 1) {
+    const sample = signal[index];
+    sumSquares += sample * sample;
+  }
+
+  return Math.sqrt(sumSquares / signal.length);
+}
+
 function computeNormalizedAutocorrelation(signal: Float32Array, maximumLag: number): Float32Array {
   const normalized = new Float32Array(maximumLag + 1);
 
@@ -82,7 +100,7 @@ function computeNormalizedAutocorrelation(signal: Float32Array, maximumLag: numb
   return normalized;
 }
 
-function findBestLag(normalizedAutocorrelation: Float32Array, minimumLag: number, maximumLag: number): number | null {
+function findBestLag(normalizedAutocorrelation: Float32Array, minimumLag: number, maximumLag: number): BestLagCandidate | null {
   const peaks: Array<{ lag: number; correlation: number }> = [];
   const availableMaximumLag = normalizedAutocorrelation.length - 1;
 
@@ -124,20 +142,35 @@ function findBestLag(normalizedAutocorrelation: Float32Array, minimumLag: number
         if (denominator !== 0) {
           const offset = 0.5 * (previous - next) / denominator;
           if (Number.isFinite(offset) && Math.abs(offset) <= 1) {
-            return peak.lag + offset;
+            return {
+              lag: peak.lag + offset,
+              correlation: peak.correlation,
+            };
           }
         }
       }
 
-      return peak.lag;
+      return peak;
     }
   }
 
-  return peaks[0]?.lag ?? null;
+  return peaks[0] ?? null;
 }
 
 function lagToFrequency(lag: number, sampleRate: number): number {
   return sampleRate / lag;
+}
+
+function computeConfidence(correlation: number): number {
+  if (!Number.isFinite(correlation)) {
+    return 0;
+  }
+
+  return Math.min(1, Math.max(0, correlation));
+}
+
+function isVoicedSignal(frequency: number | null, confidence: number, rms: number): boolean {
+  return frequency !== null && confidence >= MIN_CONFIDENCE && rms >= MIN_RMS;
 }
 
 function createInvalidResult(): PitchDetectionResult {
@@ -151,6 +184,12 @@ function createInvalidResult(): PitchDetectionResult {
 export function detectPitch(options: DetectPitchOptions): PitchDetectionResult {
   validateInput(options);
 
+  const centered = removeDcOffset(options.timeDomainData);
+  const rms = computeRms(centered);
+  if (rms < MIN_RMS) {
+    return createInvalidResult();
+  }
+
   const minimumLag = Math.max(1, Math.floor(options.sampleRate / MAX_FREQUENCY));
   const rawSearchMaximumLag = Math.floor(options.sampleRate / MIN_FREQUENCY);
   const searchMaximumLag = Math.min(rawSearchMaximumLag, options.timeDomainData.length - 1);
@@ -160,21 +199,23 @@ export function detectPitch(options: DetectPitchOptions): PitchDetectionResult {
 
   const computationMaximumLag = Math.min(searchMaximumLag + 1, options.timeDomainData.length - 1);
 
-  const centered = removeDcOffset(options.timeDomainData);
   const normalizedAutocorrelation = computeNormalizedAutocorrelation(centered, computationMaximumLag);
-  const bestLag = findBestLag(normalizedAutocorrelation, minimumLag, searchMaximumLag);
-  if (bestLag === null) {
+  const bestCandidate = findBestLag(normalizedAutocorrelation, minimumLag, searchMaximumLag);
+  if (bestCandidate === null) {
     return createInvalidResult();
   }
 
-  const frequency = lagToFrequency(bestLag, options.sampleRate);
+  const frequency = lagToFrequency(bestCandidate.lag, options.sampleRate);
+  const confidence = computeConfidence(bestCandidate.correlation);
   if (!Number.isFinite(frequency) || frequency < MIN_FREQUENCY || frequency > MAX_FREQUENCY) {
     return createInvalidResult();
   }
 
+  const isVoiced = isVoicedSignal(frequency, confidence, rms);
+
   return {
     frequency,
-    confidence: 0,
-    isVoiced: false,
+    confidence,
+    isVoiced,
   };
 }
