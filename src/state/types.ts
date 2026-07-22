@@ -41,6 +41,8 @@ export interface AppStateActions {
   startAudioCapture: () => Promise<void>;
   stopAudioCapture: () => Promise<void>;
   updateFrequencyBuffer: () => Float32Array;
+  startFrequencyUpdateScheduler: () => void;
+  stopFrequencyUpdateScheduler: () => void;
   setAutoSaveRecording: (enabled: boolean) => void;
   updateCurrentSession: (updater: (currentSession: CurrentSessionState) => CurrentSessionState) => void;
   resetSettings: () => void;

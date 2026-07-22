@@ -27,6 +27,8 @@ export function useAudioCapture() {
   }, [actions]);
 
   const updateFrequencyBuffer = useCallback(() => actions.updateFrequencyBuffer(), [actions]);
+  const startFrequencyUpdateScheduler = useCallback(() => actions.startFrequencyUpdateScheduler(), [actions]);
+  const stopFrequencyUpdateScheduler = useCallback(() => actions.stopFrequencyUpdateScheduler(), [actions]);
 
   return {
     captureStatus: state.audioCaptureStatus,
@@ -40,5 +42,7 @@ export function useAudioCapture() {
     startAudioCapture,
     stopAudioCapture,
     updateFrequencyBuffer,
+    startFrequencyUpdateScheduler,
+    stopFrequencyUpdateScheduler,
   };
 }

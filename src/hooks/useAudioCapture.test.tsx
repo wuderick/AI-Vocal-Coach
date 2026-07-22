@@ -9,6 +9,7 @@ import * as audioCaptureService from '../services/audio/audioCaptureService';
 import * as audioDeviceService from '../services/audio/audioDeviceService';
 import * as audioGraphService from '../services/audio/audioGraphService';
 import * as frequencyBufferService from '../services/audio/frequencyBufferService';
+import * as frequencyUpdateSchedulerService from '../services/audio/frequencyUpdateSchedulerService';
 
 vi.mock('../services/audio/audioCaptureService', async () => {
   const actual = await vi.importActual<typeof import('../services/audio/audioCaptureService')>('../services/audio/audioCaptureService');
@@ -46,6 +47,15 @@ vi.mock('../services/audio/frequencyBufferService', async () => {
   };
 });
 
+vi.mock('../services/audio/frequencyUpdateSchedulerService', async () => {
+  const actual = await vi.importActual<typeof import('../services/audio/frequencyUpdateSchedulerService')>('../services/audio/frequencyUpdateSchedulerService');
+  return {
+    ...actual,
+    startScheduler: vi.fn(),
+    stopScheduler: vi.fn(),
+  };
+});
+
 interface Deferred<T> {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -72,9 +82,20 @@ function createRuntime(overrides: Partial<audioCaptureService.AudioCaptureRuntim
 }
 
 let latestUpdateFrequencyBuffer: (() => Float32Array) | null = null;
+let latestStartFrequencyUpdateScheduler: (() => void) | null = null;
+let latestStopFrequencyUpdateScheduler: (() => void) | null = null;
 let latestGraphRuntimeRef: audioGraphService.AudioGraphRuntime | null = null;
 let latestFrequencyBufferRuntimeRef: frequencyBufferService.FrequencyBufferRuntime | null = null;
 let renderCount = 0;
+
+interface CapturedSchedulerOptions {
+  runtime: {
+    animationFrameId: number | null;
+    isRunning: boolean;
+  };
+  onFrame: () => void;
+  onError: (error: unknown) => void;
+}
 
 function TestCaptureHarness() {
   const { state, actions } = useAppStateContext();
@@ -82,12 +103,16 @@ function TestCaptureHarness() {
     startAudioCapture,
     stopAudioCapture,
     updateFrequencyBuffer,
+    startFrequencyUpdateScheduler,
+    stopFrequencyUpdateScheduler,
     isAudioGraphReady,
     isFrequencyBufferReady,
   } = useAudioCapture();
 
   renderCount += 1;
   latestUpdateFrequencyBuffer = updateFrequencyBuffer;
+  latestStartFrequencyUpdateScheduler = startFrequencyUpdateScheduler;
+  latestStopFrequencyUpdateScheduler = stopFrequencyUpdateScheduler;
   latestGraphRuntimeRef = state.audioGraphRuntime;
   latestFrequencyBufferRuntimeRef = state.audioFrequencyBufferRuntime;
 
@@ -107,6 +132,8 @@ function TestCaptureHarness() {
       <button data-testid="refresh-devices" onClick={() => void actions.refreshAudioDevices()}>refresh devices</button>
       <button data-testid="select-mic-1" onClick={() => actions.selectAudioDevice('mic-1')}>select mic 1</button>
       <button data-testid="reset-settings" onClick={() => actions.resetSettings()}>reset</button>
+      <button data-testid="start-scheduler" onClick={() => startFrequencyUpdateScheduler()}>start scheduler</button>
+      <button data-testid="stop-scheduler" onClick={() => stopFrequencyUpdateScheduler()}>stop scheduler</button>
     </div>
   );
 }
@@ -133,6 +160,8 @@ describe('useAudioCapture + AppStateProvider', () => {
   const mockedDisposeAudioGraph = vi.mocked(audioGraphService.disposeAudioGraph);
   const mockedInitializeFrequencyBuffer = vi.mocked(frequencyBufferService.initializeFrequencyBuffer);
   const mockedDisposeFrequencyBuffer = vi.mocked(frequencyBufferService.disposeFrequencyBuffer);
+  const mockedStartScheduler = vi.mocked(frequencyUpdateSchedulerService.startScheduler);
+  const mockedStopScheduler = vi.mocked(frequencyUpdateSchedulerService.stopScheduler);
   let mockedReadFrequencyData: MockInstance;
   let mockedGetFloatFrequencyData: ReturnType<typeof vi.fn>;
 
@@ -142,6 +171,8 @@ describe('useAudioCapture + AppStateProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     latestUpdateFrequencyBuffer = null;
+    latestStartFrequencyUpdateScheduler = null;
+    latestStopFrequencyUpdateScheduler = null;
     latestGraphRuntimeRef = null;
     latestFrequencyBufferRuntimeRef = null;
     renderCount = 0;
@@ -172,6 +203,8 @@ describe('useAudioCapture + AppStateProvider', () => {
     mockedDisposeAudioGraph.mockReturnValue({ sourceNode: null, analyserNode: null });
     mockedInitializeFrequencyBuffer.mockReturnValue(frequencyBufferRuntime);
     mockedDisposeFrequencyBuffer.mockReturnValue({ frequencyData: null, fftSize: 0, frequencyBinCount: 0 });
+    mockedStartScheduler.mockImplementation(() => {});
+    mockedStopScheduler.mockImplementation(() => {});
     mockedReadFrequencyData = vi.spyOn(frequencyBufferService, 'readFrequencyData');
   });
 
@@ -548,6 +581,210 @@ describe('useAudioCapture + AppStateProvider', () => {
     expect(mockedDisposeAudioGraph).toHaveBeenCalledTimes(disposeAudioGraphCallCountBefore);
     expect(mockedDisposeFrequencyBuffer).toHaveBeenCalledTimes(disposeFrequencyBufferCallCountBefore);
     expect(screen.getByTestId('status')).toHaveTextContent('active');
+  });
+
+  it('exposes manual scheduler actions from hook and starts scheduler with runtime and callbacks', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const startScheduler = latestStartFrequencyUpdateScheduler;
+    const stopScheduler = latestStopFrequencyUpdateScheduler;
+
+    expect(startScheduler).not.toBeNull();
+    expect(stopScheduler).not.toBeNull();
+
+    startScheduler!();
+
+    expect(mockedStartScheduler).toHaveBeenCalledTimes(1);
+    const capturedOptions = mockedStartScheduler.mock.calls[0]?.[0] as CapturedSchedulerOptions | undefined;
+    if (!capturedOptions) {
+      throw new Error('Expected scheduler options to be captured.');
+    }
+
+    expect(capturedOptions.runtime).toEqual({
+      animationFrameId: null,
+      isRunning: false,
+    });
+    expect(typeof capturedOptions.onFrame).toBe('function');
+    expect(typeof capturedOptions.onError).toBe('function');
+
+    stopScheduler!();
+    expect(mockedStopScheduler).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto start scheduler during capture start', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    expect(mockedStartScheduler).not.toHaveBeenCalled();
+  });
+
+  it('throws invalid-runtime and does not call startScheduler when runtime is not ready', () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    const startScheduler = latestStartFrequencyUpdateScheduler;
+    expect(startScheduler).not.toBeNull();
+
+    let caught: unknown;
+    try {
+      startScheduler!();
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(frequencyUpdateSchedulerService.FrequencyUpdateSchedulerError);
+    expect((caught as frequencyUpdateSchedulerService.FrequencyUpdateSchedulerError).code).toBe('invalid-runtime');
+    expect(mockedStartScheduler).not.toHaveBeenCalled();
+  });
+
+  it('throws scheduler-already-running from duplicate scheduler start and does not create second start call', async () => {
+    let calls = 0;
+    mockedStartScheduler.mockImplementation(() => {
+      calls += 1;
+      if (calls > 1) {
+        throw new frequencyUpdateSchedulerService.FrequencyUpdateSchedulerError(
+          'scheduler-already-running',
+          'already running',
+        );
+      }
+    });
+
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const startScheduler = latestStartFrequencyUpdateScheduler;
+    expect(startScheduler).not.toBeNull();
+
+    startScheduler!();
+    expect(() => startScheduler!()).toThrowError(frequencyUpdateSchedulerService.FrequencyUpdateSchedulerError);
+    expect(calls).toBe(2);
+  });
+
+  it('wires provider-owned onFrame callback to existing updateFrequencyBuffer', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    latestStartFrequencyUpdateScheduler!();
+    const capturedOptions = mockedStartScheduler.mock.calls[0]?.[0] as CapturedSchedulerOptions | undefined;
+    if (!capturedOptions) {
+      throw new Error('Expected scheduler options to be captured.');
+    }
+
+    capturedOptions.onFrame();
+
+    expect(mockedReadFrequencyData).toHaveBeenCalledWith({
+      analyserNode: graphRuntime.analyserNode,
+      runtime: frequencyBufferRuntime,
+    });
+  });
+
+  it('invokes onError callback without introducing UI error state changes', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(
+        <AppStateProvider>
+          <TestCaptureHarness />
+        </AppStateProvider>,
+      );
+
+      fireEvent.click(screen.getByTestId('start'));
+      await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+      latestStartFrequencyUpdateScheduler!();
+      const capturedOptions = mockedStartScheduler.mock.calls[0]?.[0] as CapturedSchedulerOptions | undefined;
+      if (!capturedOptions) {
+        throw new Error('Expected scheduler options to be captured.');
+      }
+
+      capturedOptions.onError(new Error('frame error'));
+
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('status')).toHaveTextContent('active');
+      expect(screen.getByTestId('error')).toHaveTextContent('null');
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('defensively stops scheduler on capture stop', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    latestStartFrequencyUpdateScheduler!();
+    const stopCallCountBeforeCaptureStop = mockedStopScheduler.mock.calls.length;
+
+    fireEvent.click(screen.getByTestId('stop'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('idle'));
+
+    expect(mockedStopScheduler.mock.calls.length).toBeGreaterThan(stopCallCountBeforeCaptureStop);
+  });
+
+  it('defensively stops scheduler on reset', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    latestStartFrequencyUpdateScheduler!();
+    const stopCallCountBeforeReset = mockedStopScheduler.mock.calls.length;
+
+    fireEvent.click(screen.getByTestId('reset-settings'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('idle'));
+
+    expect(mockedStopScheduler.mock.calls.length).toBeGreaterThan(stopCallCountBeforeReset);
+  });
+
+  it('defensively stops scheduler on unmount', async () => {
+    const { unmount } = renderCaptureHarness();
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    latestStartFrequencyUpdateScheduler!();
+    const stopCallCountBeforeUnmount = mockedStopScheduler.mock.calls.length;
+
+    unmount();
+
+    expect(mockedStopScheduler.mock.calls.length).toBeGreaterThan(stopCallCountBeforeUnmount);
   });
 
   it('ignores duplicate start while status is starting', async () => {

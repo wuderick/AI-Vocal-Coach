@@ -7,6 +7,7 @@ import * as audioDeviceService from '../services/audio/audioDeviceService';
 import * as audioCaptureService from '../services/audio/audioCaptureService';
 import * as audioGraphService from '../services/audio/audioGraphService';
 import * as frequencyBufferService from '../services/audio/frequencyBufferService';
+import * as frequencyUpdateSchedulerService from '../services/audio/frequencyUpdateSchedulerService';
 
 const CAPTURE_DEVICE_LOCK_STATES = new Set(['starting', 'active', 'stopping']);
 
@@ -30,6 +31,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const captureRuntimeRef = useRef<audioCaptureService.AudioCaptureRuntime>(initialAudioCaptureRuntime);
   const graphRuntimeRef = useRef<audioGraphService.AudioGraphRuntime>(audioGraphService.initialAudioGraphRuntime);
   const frequencyBufferRuntimeRef = useRef<frequencyBufferService.FrequencyBufferRuntime>(frequencyBufferService.initialFrequencyBufferRuntime);
+  const frequencyUpdateSchedulerRuntimeRef =
+    useRef<frequencyUpdateSchedulerService.FrequencyUpdateSchedulerRuntime>(
+      frequencyUpdateSchedulerService.createSchedulerRuntime(),
+    );
 
   const safeSetState = (updater: (current: AppState) => AppState) => {
     if (!isMountedRef.current) return;
@@ -49,6 +54,27 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const shouldBlockDeviceSelection = (captureStatus: AppState['audioCaptureStatus']) =>
     CAPTURE_DEVICE_LOCK_STATES.has(captureStatus);
 
+  const stopFrequencyUpdateScheduler = () => {
+    frequencyUpdateSchedulerService.stopScheduler(frequencyUpdateSchedulerRuntimeRef.current);
+  };
+
+  const updateFrequencyBuffer = () => frequencyBufferService.readFrequencyData({
+    analyserNode: graphRuntimeRef.current.analyserNode,
+    runtime: frequencyBufferRuntimeRef.current,
+  });
+
+  const validateFrequencyUpdateSchedulerRuntime = () => {
+    const analyserNode = graphRuntimeRef.current.analyserNode;
+    const frequencyData = frequencyBufferRuntimeRef.current.frequencyData;
+
+    if (!analyserNode || !frequencyData || frequencyData.length <= 0) {
+      throw new frequencyUpdateSchedulerService.FrequencyUpdateSchedulerError(
+        'invalid-runtime',
+        'Graph runtime analyserNode and frequency buffer runtime must be ready before starting scheduler.',
+      );
+    }
+  };
+
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -59,6 +85,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isMountedRef.current = false;
       setCaptureOperation();
+      stopFrequencyUpdateScheduler();
       frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
       void audioCaptureService.stopAudioCapture(captureRuntimeRef.current);
@@ -266,6 +293,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         audioCaptureStatus: 'stopping',
       }));
 
+      stopFrequencyUpdateScheduler();
       frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
 
@@ -289,6 +317,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setState((current) => ({ ...current, currentSession: updater(current.currentSession) })),
     resetSettings: () => {
       const operationId = setCaptureOperation();
+
+      stopFrequencyUpdateScheduler();
 
       safeSetState(() => ({
         ...initialAppState,
@@ -318,10 +348,20 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }));
       });
     },
-    updateFrequencyBuffer: () => frequencyBufferService.readFrequencyData({
-      analyserNode: graphRuntimeRef.current.analyserNode,
-      runtime: frequencyBufferRuntimeRef.current,
-    }),
+    updateFrequencyBuffer,
+    startFrequencyUpdateScheduler: () => {
+      validateFrequencyUpdateSchedulerRuntime();
+      frequencyUpdateSchedulerService.startScheduler({
+        runtime: frequencyUpdateSchedulerRuntimeRef.current,
+        onFrame: () => {
+          updateFrequencyBuffer();
+        },
+        onError: (error: unknown) => {
+          console.error('Frequency update scheduler frame callback failed.', error);
+        },
+      });
+    },
+    stopFrequencyUpdateScheduler,
   }), []);
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);
