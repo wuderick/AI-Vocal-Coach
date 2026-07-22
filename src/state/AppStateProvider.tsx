@@ -9,8 +9,15 @@ import * as audioGraphService from '../services/audio/audioGraphService';
 import * as frequencyBufferService from '../services/audio/frequencyBufferService';
 import * as frequencyUpdateSchedulerService from '../services/audio/frequencyUpdateSchedulerService';
 import * as timeDomainBufferService from '../services/audio/timeDomainBufferService';
+import { detectPitch, type PitchDetectionResult } from '../services/audio/pitchDetectionService';
+import { createPitchHistoryBuffer, type PitchHistoryBuffer } from '../services/audio/pitchHistoryBuffer';
 
 const CAPTURE_DEVICE_LOCK_STATES = new Set(['starting', 'active', 'stopping']);
+const EMPTY_PITCH_DETECTION_RESULT: PitchDetectionResult = {
+  frequency: null,
+  confidence: 0,
+  isVoiced: false,
+};
 
 function resolveThemeMode(theme: AppState['theme']): 'light' | 'dark' {
   if (theme === 'light' || theme === 'dark') {
@@ -40,6 +47,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     useRef<frequencyUpdateSchedulerService.FrequencyUpdateSchedulerRuntime>(
       frequencyUpdateSchedulerService.createSchedulerRuntime(),
     );
+  const pitchHistoryBufferRef = useRef<PitchHistoryBuffer | null>(null);
+  if (pitchHistoryBufferRef.current === null) {
+    pitchHistoryBufferRef.current = createPitchHistoryBuffer();
+  }
+  const latestPitchDetectionResultRef = useRef<PitchDetectionResult>(EMPTY_PITCH_DETECTION_RESULT);
 
   const safeSetState = (updater: (current: AppState) => AppState) => {
     if (!isMountedRef.current) return;
@@ -73,6 +85,30 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     runtime: timeDomainBufferRuntimeRef.current,
   });
 
+  const detectAndRecordPitchFrame = (): PitchDetectionResult => {
+    const timeDomainData = timeDomainBufferRuntimeRef.current.timeDomainData;
+    const audioContext = captureRuntimeRef.current.audioContext;
+    const sampleRate = audioContext?.sampleRate;
+
+    if (!timeDomainData || timeDomainData.length <= 0 || !sampleRate || sampleRate <= 0 || !audioContext) {
+      return EMPTY_PITCH_DETECTION_RESULT;
+    }
+
+    const pitchDetection = detectPitch({
+      timeDomainData,
+      sampleRate,
+    });
+
+    pitchHistoryBufferRef.current?.push({
+      timestamp: audioContext.currentTime,
+      frequency: pitchDetection.frequency,
+      confidence: pitchDetection.confidence,
+      voiced: pitchDetection.isVoiced,
+    });
+
+    return pitchDetection;
+  };
+
   const validateFrequencyUpdateSchedulerRuntime = () => {
     const analyserNode = graphRuntimeRef.current.analyserNode;
     const frequencyData = frequencyBufferRuntimeRef.current.frequencyData;
@@ -96,6 +132,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       isMountedRef.current = false;
       setCaptureOperation();
       stopFrequencyUpdateScheduler();
+      pitchHistoryBufferRef.current?.clear();
+      latestPitchDetectionResultRef.current = EMPTY_PITCH_DETECTION_RESULT;
       timeDomainBufferRuntimeRef.current = timeDomainBufferService.disposeTimeDomainBuffer(timeDomainBufferRuntimeRef.current);
       frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
@@ -302,6 +340,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         graphRuntimeRef.current = graphRuntime;
         frequencyBufferRuntimeRef.current = nextFrequencyBufferRuntime;
         timeDomainBufferRuntimeRef.current = nextTimeDomainBufferRuntime;
+        pitchHistoryBufferRef.current?.clear();
+        latestPitchDetectionResultRef.current = EMPTY_PITCH_DETECTION_RESULT;
 
         safeSetState((current) => ({
           ...current,
@@ -346,7 +386,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       }));
 
       stopFrequencyUpdateScheduler();
-        timeDomainBufferRuntimeRef.current = timeDomainBufferService.disposeTimeDomainBuffer(timeDomainBufferRuntimeRef.current);
+      pitchHistoryBufferRef.current?.clear();
+      latestPitchDetectionResultRef.current = EMPTY_PITCH_DETECTION_RESULT;
+      timeDomainBufferRuntimeRef.current = timeDomainBufferService.disposeTimeDomainBuffer(timeDomainBufferRuntimeRef.current);
       frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
 
@@ -373,6 +415,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       const operationId = setCaptureOperation();
 
       stopFrequencyUpdateScheduler();
+      pitchHistoryBufferRef.current?.clear();
+      latestPitchDetectionResultRef.current = EMPTY_PITCH_DETECTION_RESULT;
 
       safeSetState(() => ({
         ...initialAppState,
@@ -414,6 +458,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         onFrame: () => {
           updateFrequencyBuffer();
           updateTimeDomainBuffer();
+          latestPitchDetectionResultRef.current = detectAndRecordPitchFrame();
         },
         onError: (error: unknown) => {
           console.error('Frequency update scheduler frame callback failed.', error);
@@ -421,6 +466,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       });
     },
     stopFrequencyUpdateScheduler,
+    getLatestPitchDetectionResult: () => latestPitchDetectionResultRef.current,
   }), []);
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);

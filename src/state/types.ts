@@ -3,6 +3,7 @@ import type { AudioCaptureErrorCode, AudioCaptureRuntime } from '../services/aud
 import type { AudioGraphRuntime } from '../services/audio/audioGraphService';
 import type { FrequencyBufferRuntime } from '../services/audio/frequencyBufferService';
 import type { TimeDomainBufferRuntime } from '../services/audio/timeDomainBufferService';
+import type { PitchDetectionResult } from '../services/audio/pitchDetectionService';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type RecordingState = 'idle' | 'recording' | 'paused' | 'stopped';
@@ -49,4 +50,5 @@ export interface AppStateActions {
   setAutoSaveRecording: (enabled: boolean) => void;
   updateCurrentSession: (updater: (currentSession: CurrentSessionState) => CurrentSessionState) => void;
   resetSettings: () => void;
+  getLatestPitchDetectionResult: () => PitchDetectionResult;
 }

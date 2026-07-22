@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { detectPitch } from '../services/audio/pitchDetectionService';
 import { mapFrequencyToPitch } from '../services/audio/pitchMappingService';
 import { useAppStateContext } from '../state/AppStateContext';
 
@@ -24,7 +23,7 @@ const EMPTY_PITCH_DEBUG_DATA: PitchDebugData = {
 const VOICED_HANGOVER_MS = 250;
 
 export function usePitchDebug(): PitchDebugData {
-  const { state } = useAppStateContext();
+  const { state, actions } = useAppStateContext();
   const [pitchDebugData, setPitchDebugData] = useState<PitchDebugData>(EMPTY_PITCH_DEBUG_DATA);
   const lastVoicedTimestampRef = useRef(0);
 
@@ -39,20 +38,14 @@ export function usePitchDebug(): PitchDebugData {
 
     const updatePitchDebugData = () => {
       try {
-        const timeDomainData = state.audioTimeDomainBufferRuntime?.timeDomainData;
-        const sampleRate = state.audioCaptureRuntime.audioContext?.sampleRate;
         const now = performance.now();
+        const pitchDetection = actions.getLatestPitchDetectionResult();
 
-        if (!timeDomainData || timeDomainData.length <= 0 || !sampleRate || sampleRate <= 0) {
+        if (pitchDetection.frequency === null) {
           if (now - lastVoicedTimestampRef.current >= VOICED_HANGOVER_MS) {
             setPitchDebugData(EMPTY_PITCH_DEBUG_DATA);
           }
         } else {
-          const pitchDetection = detectPitch({
-            timeDomainData,
-            sampleRate,
-          });
-
           if (!pitchDetection.isVoiced || pitchDetection.frequency === null) {
             if (now - lastVoicedTimestampRef.current >= VOICED_HANGOVER_MS) {
               setPitchDebugData(EMPTY_PITCH_DEBUG_DATA);
@@ -85,7 +78,7 @@ export function usePitchDebug(): PitchDebugData {
     return () => {
       cancelAnimationFrame(frameId);
     };
-  }, [state]);
+  }, [actions, state.audioCaptureStatus]);
 
   return pitchDebugData;
 }
