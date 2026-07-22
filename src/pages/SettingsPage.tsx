@@ -7,6 +7,7 @@ import { DeveloperPanel } from '../components/settings/DeveloperPanel';
 import { ResetSection } from '../components/settings/ResetSection';
 import { MicrophoneCard } from '../components/settings/MicrophoneCard';
 import { AudioDeviceCard } from '../components/settings/AudioDeviceCard';
+import { DebugPanel } from '../components/debug/DebugPanel';
 
 export function SettingsPage() {
   const {
@@ -45,6 +46,7 @@ export function SettingsPage() {
               />
               <AudioDeviceCard />
               <MicrophoneCard />
+              <DebugPanel />
               <ResetSection onReset={resetSettings} />
             </div>
           </Section>

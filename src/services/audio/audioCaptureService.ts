@@ -65,16 +65,21 @@ function mapGetUserMediaError(error: unknown): AudioCaptureErrorCode {
   return GET_USER_MEDIA_ERROR_CODE_MAP[name] ?? 'unknown';
 }
 
-function buildAudioConstraint(deviceId?: string | null): MediaTrackConstraints | true {
+function buildAudioConstraint(deviceId?: string | null): MediaTrackConstraints {
+  const constraints: MediaTrackConstraints = {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+    channelCount: 1,
+  };
+
   if (typeof deviceId === 'string' && deviceId.trim().length > 0) {
-    return {
-      deviceId: {
-        exact: deviceId,
-      },
+    constraints.deviceId = {
+      exact: deviceId,
     };
   }
 
-  return true;
+  return constraints;
 }
 
 export function createAudioContext(): AudioContext {

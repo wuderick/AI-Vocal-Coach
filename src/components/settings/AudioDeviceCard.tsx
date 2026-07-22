@@ -13,7 +13,14 @@ function getCaptureStatusLabel(status: 'idle' | 'starting' | 'active' | 'stoppin
 
 export function AudioDeviceCard() {
   const { audioInputDevices, selectedAudioInputId, isDeviceSelectionDisabled, selectAudioDevice, refreshAudioDevices } = useAudioDevices();
-  const { captureStatus, captureErrorMessage, startAudioCapture, stopAudioCapture } = useAudioCapture();
+  const {
+    captureStatus,
+    captureErrorMessage,
+    startAudioCapture,
+    stopAudioCapture,
+    startFrequencyUpdateScheduler,
+    stopFrequencyUpdateScheduler,
+  } = useAudioCapture();
   const isStartDisabled = captureStatus === 'starting' || captureStatus === 'stopping' || captureStatus === 'active';
   const isStopDisabled = captureStatus === 'starting' || captureStatus === 'stopping' || captureStatus === 'idle' || captureStatus === 'error';
 
@@ -23,8 +30,14 @@ export function AudioDeviceCard() {
         <div style={{ display: 'grid', gap: 'var(--spacing-small)' }}>
           <strong>Capture 狀態：{getCaptureStatusLabel(captureStatus)}</strong>
           <div style={{ display: 'flex', gap: 'var(--spacing-small)' }}>
-            <Button disabled={isStartDisabled} onClick={() => void startAudioCapture()}>Start</Button>
-            <Button disabled={isStopDisabled} onClick={() => void stopAudioCapture()}>Stop</Button>
+            <Button disabled={isStartDisabled} onClick={() => void (async () => {
+              await startAudioCapture();
+              startFrequencyUpdateScheduler();
+            })()}>Start</Button>
+            <Button disabled={isStopDisabled} onClick={() => void (async () => {
+              stopFrequencyUpdateScheduler();
+              await stopAudioCapture();
+            })()}>Stop</Button>
           </div>
           {captureErrorMessage ? <p role="alert">{captureErrorMessage}</p> : null}
         </div>

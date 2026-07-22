@@ -8,7 +8,7 @@
 
 - 列出可用麥克風
 - 選擇麥克風
-- 保存使用者選擇
+- 管理目前 Session 的使用者選擇
 - 偵測裝置插拔
 
 不實作錄音。
@@ -23,7 +23,7 @@
 - audioinput filtering
 - Device selector
 - Device change detection
-- Device persistence is deferred / non-goal for this task; session-only selection is implemented
+- Session-only device selection
 - Settings UI
 - AppState integration
 - Unit tests
@@ -94,6 +94,7 @@ Browser API
 
 - getAudioInputDevices()
 - getDefaultAudioInput()
+- subscribeToDeviceChanges()
 
 回傳型別：
 
@@ -105,7 +106,14 @@ export interface AudioInputDevice {
 }
 ```
 
-禁止直接回傳 MediaDeviceInfo。
+`subscribeToDeviceChanges()` 必須：
+
+- 在 Service 內監聽 `navigator.mediaDevices.devicechange`
+- 接收 callback
+- 回傳 unsubscribe function
+- 在 unsubscribe 時移除 listener
+
+禁止直接回傳 `MediaDeviceInfo`。
 
 ---
 
@@ -120,6 +128,26 @@ Actions：
 
 - refreshAudioDevices()
 - selectAudioDevice()
+
+狀態型別：
+
+```ts
+audioInputDevices: AudioInputDevice[];
+selectedAudioInputId: string | null;
+```
+
+裝置刷新後的選擇規則：
+
+1. 若目前選擇仍存在，保留目前選擇。
+2. 若目前選擇已不存在，選擇 Default Device。
+3. 若沒有 Default Device，選擇第一個裝置。
+4. 若沒有任何裝置，將 `selectedAudioInputId` 設為 `null`。
+
+`selectAudioDevice(id)` 規則：
+
+- 若 id 存在於 `audioInputDevices`，更新 `selectedAudioInputId`。
+- 若 id 不存在，不更新狀態。
+- 不拋出例外。
 
 ---
 
@@ -146,11 +174,11 @@ Audio Device Card
 
 # Device Persistence
 
-使用既有 Settings Storage。
+本 Task 僅將使用者選擇保存於 AppState。
 
-重新整理頁面後：
+使用者重新整理頁面後，不保留先前選擇。
 
-自動恢復使用者選擇。
+跨頁面重新整理的持久化功能延後至後續 Task，並記錄於 TECH_DEBT.md。
 
 ---
 
@@ -181,6 +209,8 @@ audioDeviceService.test.ts
 - audioinput filtering
 - default device
 - empty device list
+- devicechange subscription
+- devicechange unsubscribe
 
 新增：
 
@@ -192,6 +222,11 @@ useAudioDevices.test.tsx
 - select
 - AppState update
 - devicechange
+- 保留仍存在的已選裝置
+- 已選裝置拔除後 fallback 至 Default Device
+- 無 Default Device 時 fallback 至第一個裝置
+- 無裝置時 `selectedAudioInputId` 為 `null`
+- 無效 device id 不更新 selection
 
 全部使用 Mock。
 

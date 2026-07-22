@@ -302,6 +302,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         graphRuntimeRef.current = graphRuntime;
         frequencyBufferRuntimeRef.current = nextFrequencyBufferRuntime;
         timeDomainBufferRuntimeRef.current = nextTimeDomainBufferRuntime;
+
         safeSetState((current) => ({
           ...current,
           audioCaptureStatus: 'active',
@@ -412,6 +413,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         runtime: frequencyUpdateSchedulerRuntimeRef.current,
         onFrame: () => {
           updateFrequencyBuffer();
+          updateTimeDomainBuffer();
         },
         onError: (error: unknown) => {
           console.error('Frequency update scheduler frame callback failed.', error);
