@@ -7,6 +7,7 @@ import { useAudioCapture } from './useAudioCapture';
 import * as audioCaptureService from '../services/audio/audioCaptureService';
 import * as audioDeviceService from '../services/audio/audioDeviceService';
 import * as audioGraphService from '../services/audio/audioGraphService';
+import * as frequencyBufferService from '../services/audio/frequencyBufferService';
 
 vi.mock('../services/audio/audioCaptureService', async () => {
   const actual = await vi.importActual<typeof import('../services/audio/audioCaptureService')>('../services/audio/audioCaptureService');
@@ -32,6 +33,15 @@ vi.mock('../services/audio/audioGraphService', async () => {
     ...actual,
     initializeAudioGraph: vi.fn(),
     disposeAudioGraph: vi.fn(),
+  };
+});
+
+vi.mock('../services/audio/frequencyBufferService', async () => {
+  const actual = await vi.importActual<typeof import('../services/audio/frequencyBufferService')>('../services/audio/frequencyBufferService');
+  return {
+    ...actual,
+    initializeFrequencyBuffer: vi.fn(),
+    disposeFrequencyBuffer: vi.fn(),
   };
 });
 
@@ -62,7 +72,7 @@ function createRuntime(overrides: Partial<audioCaptureService.AudioCaptureRuntim
 
 function TestCaptureHarness() {
   const { state, actions } = useAppStateContext();
-  const { startAudioCapture, stopAudioCapture, isAudioGraphReady } = useAudioCapture();
+  const { startAudioCapture, stopAudioCapture, isAudioGraphReady, isFrequencyBufferReady } = useAudioCapture();
 
   return (
     <div>
@@ -72,7 +82,9 @@ function TestCaptureHarness() {
       <div data-testid="runtime-stream">{String(Boolean(state.audioCaptureRuntime.mediaStream))}</div>
       <div data-testid="runtime-graph-source">{String(Boolean(state.audioGraphRuntime.sourceNode))}</div>
       <div data-testid="runtime-graph-analyser">{String(Boolean(state.audioGraphRuntime.analyserNode))}</div>
+      <div data-testid="runtime-frequency-buffer">{String(Boolean(state.audioFrequencyBufferRuntime.frequencyData))}</div>
       <div data-testid="graph-ready">{String(isAudioGraphReady)}</div>
+      <div data-testid="frequency-buffer-ready">{String(isFrequencyBufferReady)}</div>
       <button data-testid="start" onClick={() => void startAudioCapture()}>start</button>
       <button data-testid="stop" onClick={() => void stopAudioCapture()}>stop</button>
       <button data-testid="refresh-devices" onClick={() => void actions.refreshAudioDevices()}>refresh devices</button>
@@ -102,10 +114,18 @@ describe('useAudioCapture + AppStateProvider', () => {
   const mockedGetAudioInputDevices = vi.mocked(audioDeviceService.getAudioInputDevices);
   const mockedInitializeAudioGraph = vi.mocked(audioGraphService.initializeAudioGraph);
   const mockedDisposeAudioGraph = vi.mocked(audioGraphService.disposeAudioGraph);
+  const mockedInitializeFrequencyBuffer = vi.mocked(frequencyBufferService.initializeFrequencyBuffer);
+  const mockedDisposeFrequencyBuffer = vi.mocked(frequencyBufferService.disposeFrequencyBuffer);
 
   const graphRuntime = {
     sourceNode: { disconnect: vi.fn() } as unknown as MediaStreamAudioSourceNode,
     analyserNode: { disconnect: vi.fn() } as unknown as AnalyserNode,
+  };
+
+  const frequencyBufferRuntime = {
+    frequencyData: new Float32Array(4),
+    fftSize: 8,
+    frequencyBinCount: 4,
   };
 
   beforeEach(() => {
@@ -115,6 +135,8 @@ describe('useAudioCapture + AppStateProvider', () => {
     mockedStopAudioCapture.mockResolvedValue(createRuntime());
     mockedInitializeAudioGraph.mockReturnValue(graphRuntime);
     mockedDisposeAudioGraph.mockReturnValue({ sourceNode: null, analyserNode: null });
+    mockedInitializeFrequencyBuffer.mockReturnValue(frequencyBufferRuntime);
+    mockedDisposeFrequencyBuffer.mockReturnValue({ frequencyData: null, fftSize: 0, frequencyBinCount: 0 });
   });
 
   afterEach(() => {
@@ -130,6 +152,26 @@ describe('useAudioCapture + AppStateProvider', () => {
 
     expect(screen.getByTestId('status')).toHaveTextContent('idle');
     expect(screen.getByTestId('error')).toHaveTextContent('null');
+  });
+
+  it('does not mark zero-length frequency buffer as ready', async () => {
+    mockedInitializeFrequencyBuffer.mockReturnValueOnce({
+      frequencyData: new Float32Array(0),
+      fftSize: 0,
+      frequencyBinCount: 0,
+    });
+
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+    expect(screen.getByTestId('runtime-frequency-buffer')).toHaveTextContent('true');
+    expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('false');
   });
 
   it('transitions idle -> starting -> active and saves runtime stream', async () => {
@@ -152,7 +194,9 @@ describe('useAudioCapture + AppStateProvider', () => {
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
     await waitFor(() => expect(screen.getByTestId('runtime-stream')).toHaveTextContent('true'));
     await waitFor(() => expect(screen.getByTestId('graph-ready')).toHaveTextContent('true'));
+    await waitFor(() => expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('true'));
     expect(mockedInitializeAudioGraph).toHaveBeenCalledTimes(1);
+    expect(mockedInitializeFrequencyBuffer).toHaveBeenCalledTimes(1);
   });
 
   it('passes selectedAudioInputId to startAudioCapture', async () => {
@@ -269,7 +313,9 @@ describe('useAudioCapture + AppStateProvider', () => {
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('idle'));
     expect(screen.getByTestId('runtime-stream')).toHaveTextContent('false');
     await waitFor(() => expect(screen.getByTestId('graph-ready')).toHaveTextContent('false'));
+    await waitFor(() => expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('false'));
     expect(mockedDisposeAudioGraph).toHaveBeenCalled();
+    expect(mockedDisposeFrequencyBuffer).toHaveBeenCalled();
   });
 
   it('ignores duplicate start while status is starting', async () => {
@@ -403,8 +449,10 @@ describe('useAudioCapture + AppStateProvider', () => {
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('idle'));
     await waitFor(() => expect(screen.getByTestId('runtime-stream')).toHaveTextContent('false'));
     await waitFor(() => expect(screen.getByTestId('graph-ready')).toHaveTextContent('false'));
+    await waitFor(() => expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('false'));
     expect(stopTrack).toHaveBeenCalledTimes(1);
     expect(mockedDisposeAudioGraph).toHaveBeenCalled();
+    expect(mockedDisposeFrequencyBuffer).toHaveBeenCalled();
   });
 
   it('does not update state after unmount when pending start resolves', async () => {
@@ -504,6 +552,7 @@ describe('useAudioCapture + AppStateProvider', () => {
     unmount();
     await waitFor(() => expect(stopTrack).toHaveBeenCalledTimes(1));
     expect(mockedDisposeAudioGraph).toHaveBeenCalled();
+    expect(mockedDisposeFrequencyBuffer).toHaveBeenCalled();
   });
 
   it('stores graph runtime in state after successful start', async () => {
@@ -516,6 +565,7 @@ describe('useAudioCapture + AppStateProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('runtime-graph-source')).toHaveTextContent('true'));
     await waitFor(() => expect(screen.getByTestId('runtime-graph-analyser')).toHaveTextContent('true'));
+    await waitFor(() => expect(screen.getByTestId('runtime-frequency-buffer')).toHaveTextContent('true'));
   });
 
   it('keeps old graph runtime when new graph initialization fails', async () => {
@@ -555,5 +605,44 @@ describe('useAudioCapture + AppStateProvider', () => {
     expect(screen.getByTestId('graph-ready')).toHaveTextContent('true');
     expect(stream2Stop).toHaveBeenCalledTimes(1);
     expect(mockedDisposeAudioGraph).toHaveBeenCalledTimes(disposeCallCountBeforeFailure);
+  });
+
+  it('keeps old frequency buffer when new buffer initialization fails', async () => {
+    const stream1 = { getTracks: () => [] } as unknown as MediaStream;
+    const stream2Stop = vi.fn();
+    const stream2 = { getTracks: () => [{ stop: stream2Stop }] } as unknown as MediaStream;
+
+    mockedStartAudioCapture
+      .mockResolvedValueOnce(createRuntime({ mediaStream: stream1, audioContext: {} as AudioContext }))
+      .mockResolvedValueOnce(createRuntime({ mediaStream: stream2, audioContext: {} as AudioContext }));
+
+    mockedInitializeFrequencyBuffer
+      .mockReturnValueOnce(frequencyBufferRuntime)
+      .mockImplementationOnce(() => {
+        throw new frequencyBufferService.FrequencyBufferError('buffer-init-failed', 'buffer failure');
+      });
+
+    mockedStopAudioCapture.mockImplementation(async (runtime) => {
+      audioCaptureService.stopMediaStream(runtime.mediaStream);
+      return {
+        audioContext: runtime.audioContext,
+        mediaStream: null,
+      };
+    });
+
+    renderCaptureHarness();
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+    expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('true');
+
+    const disposeBufferCallCountBeforeFailure = mockedDisposeFrequencyBuffer.mock.calls.length;
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('error'));
+
+    expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('true');
+    expect(stream2Stop).toHaveBeenCalledTimes(1);
+    expect(mockedDisposeFrequencyBuffer).toHaveBeenCalledTimes(disposeBufferCallCountBeforeFailure);
   });
 });

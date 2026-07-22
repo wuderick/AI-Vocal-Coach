@@ -2,6 +2,7 @@ import { AppState, AnalysisStatus, CurrentSessionState, MicrophonePermission, Re
 import type { AudioCaptureStatus } from './types';
 import type { AudioCaptureRuntime } from '../services/audio/audioCaptureService';
 import { initialAudioGraphRuntime } from '../services/audio/audioGraphService';
+import { initialFrequencyBufferRuntime } from '../services/audio/frequencyBufferService';
 
 export const initialCurrentSessionState: CurrentSessionState = {
   currentRecordingId: null,
@@ -26,6 +27,7 @@ export const initialAppState: AppState = {
   audioCaptureErrorCode: null,
   audioCaptureRuntime: initialAudioCaptureRuntime,
   audioGraphRuntime: initialAudioGraphRuntime,
+  audioFrequencyBufferRuntime: initialFrequencyBufferRuntime,
   currentSession: initialCurrentSessionState,
   autoSaveRecording: true,
 };

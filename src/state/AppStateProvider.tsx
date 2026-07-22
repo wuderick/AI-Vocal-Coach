@@ -6,6 +6,7 @@ import * as microphoneService from '../services/audio/microphoneService';
 import * as audioDeviceService from '../services/audio/audioDeviceService';
 import * as audioCaptureService from '../services/audio/audioCaptureService';
 import * as audioGraphService from '../services/audio/audioGraphService';
+import * as frequencyBufferService from '../services/audio/frequencyBufferService';
 
 const CAPTURE_DEVICE_LOCK_STATES = new Set(['starting', 'active', 'stopping']);
 
@@ -28,6 +29,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const captureOperationRef = useRef(0);
   const captureRuntimeRef = useRef<audioCaptureService.AudioCaptureRuntime>(initialAudioCaptureRuntime);
   const graphRuntimeRef = useRef<audioGraphService.AudioGraphRuntime>(audioGraphService.initialAudioGraphRuntime);
+  const frequencyBufferRuntimeRef = useRef<frequencyBufferService.FrequencyBufferRuntime>(frequencyBufferService.initialFrequencyBufferRuntime);
 
   const safeSetState = (updater: (current: AppState) => AppState) => {
     if (!isMountedRef.current) return;
@@ -57,6 +59,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isMountedRef.current = false;
       setCaptureOperation();
+      frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
       void audioCaptureService.stopAudioCapture(captureRuntimeRef.current);
     };
@@ -133,6 +136,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       const operationId = setCaptureOperation();
       const selectedDeviceId = stateRef.current.selectedAudioInputId;
       const previousGraphRuntime = graphRuntimeRef.current;
+      const previousFrequencyBufferRuntime = frequencyBufferRuntimeRef.current;
 
       safeSetState((current) => ({
         ...current,
@@ -168,17 +172,47 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             audioCaptureErrorCode: errorCode,
             audioCaptureRuntime: stoppedRuntime,
             audioGraphRuntime: previousGraphRuntime,
+            audioFrequencyBufferRuntime: previousFrequencyBufferRuntime,
+          }));
+          return;
+        }
+
+        let nextFrequencyBufferRuntime: frequencyBufferService.FrequencyBufferRuntime;
+        try {
+          nextFrequencyBufferRuntime = frequencyBufferService.initializeFrequencyBuffer({
+            analyserNode: graphRuntime.analyserNode,
+          });
+        } catch {
+          audioGraphService.disposeAudioGraph(graphRuntime);
+          const stoppedRuntime = await audioCaptureService.stopAudioCapture(runtime);
+
+          if (!isMountedRef.current) return;
+          if (operationId !== captureOperationRef.current) return;
+
+          captureRuntimeRef.current = stoppedRuntime;
+          graphRuntimeRef.current = previousGraphRuntime;
+          frequencyBufferRuntimeRef.current = previousFrequencyBufferRuntime;
+
+          safeSetState((current) => ({
+            ...current,
+            audioCaptureStatus: 'error',
+            audioCaptureErrorCode: 'unknown',
+            audioCaptureRuntime: stoppedRuntime,
+            audioGraphRuntime: previousGraphRuntime,
+            audioFrequencyBufferRuntime: previousFrequencyBufferRuntime,
           }));
           return;
         }
 
         if (!isMountedRef.current) {
+          frequencyBufferService.disposeFrequencyBuffer(nextFrequencyBufferRuntime);
           audioGraphService.disposeAudioGraph(graphRuntime);
           void audioCaptureService.stopAudioCapture(runtime);
           return;
         }
 
         if (operationId !== captureOperationRef.current) {
+          frequencyBufferService.disposeFrequencyBuffer(nextFrequencyBufferRuntime);
           audioGraphService.disposeAudioGraph(graphRuntime);
           audioCaptureService.stopMediaStream(runtime.mediaStream);
           captureRuntimeRef.current = {
@@ -188,17 +222,21 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(previousFrequencyBufferRuntime);
         audioGraphService.disposeAudioGraph(previousGraphRuntime);
         captureRuntimeRef.current = runtime;
         graphRuntimeRef.current = graphRuntime;
+        frequencyBufferRuntimeRef.current = nextFrequencyBufferRuntime;
         safeSetState((current) => ({
           ...current,
           audioCaptureStatus: 'active',
           audioCaptureErrorCode: null,
           audioCaptureRuntime: runtime,
           audioGraphRuntime: graphRuntime,
+          audioFrequencyBufferRuntime: nextFrequencyBufferRuntime,
         }));
       } catch (error) {
+        frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
         graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
         const stoppedRuntime = await audioCaptureService.stopAudioCapture(captureRuntimeRef.current);
         captureRuntimeRef.current = stoppedRuntime;
@@ -213,6 +251,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           audioCaptureErrorCode: errorCode,
           audioCaptureRuntime: stoppedRuntime,
           audioGraphRuntime: graphRuntimeRef.current,
+          audioFrequencyBufferRuntime: frequencyBufferRuntimeRef.current,
         }));
       }
     },
@@ -227,6 +266,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         audioCaptureStatus: 'stopping',
       }));
 
+      frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
 
       const runtime = await audioCaptureService.stopAudioCapture(captureRuntimeRef.current);
@@ -241,6 +281,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         audioCaptureErrorCode: null,
         audioCaptureRuntime: runtime,
         audioGraphRuntime: graphRuntimeRef.current,
+        audioFrequencyBufferRuntime: frequencyBufferRuntimeRef.current,
       }));
     },
     setAutoSaveRecording: (enabled: boolean) => setState((current) => ({ ...current, autoSaveRecording: enabled })),
@@ -256,8 +297,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           mediaStream: null,
         },
         audioGraphRuntime: audioGraphService.initialAudioGraphRuntime,
+        audioFrequencyBufferRuntime: frequencyBufferService.initialFrequencyBufferRuntime,
       }));
 
+      frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
 
       void audioCaptureService.stopAudioCapture(captureRuntimeRef.current).then((runtime) => {
@@ -271,6 +314,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           audioCaptureErrorCode: null,
           audioCaptureRuntime: runtime,
           audioGraphRuntime: graphRuntimeRef.current,
+          audioFrequencyBufferRuntime: frequencyBufferRuntimeRef.current,
         }));
       });
     },

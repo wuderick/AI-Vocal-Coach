@@ -5,6 +5,7 @@ import { AudioDeviceCard } from './AudioDeviceCard';
 import * as audioDeviceService from '../../services/audio/audioDeviceService';
 import * as audioCaptureService from '../../services/audio/audioCaptureService';
 import * as audioGraphService from '../../services/audio/audioGraphService';
+import * as frequencyBufferService from '../../services/audio/frequencyBufferService';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -40,6 +41,16 @@ describe('AudioDeviceCard', () => {
     vi.spyOn(audioGraphService, 'disposeAudioGraph').mockReturnValue({
       sourceNode: null,
       analyserNode: null,
+    });
+    vi.spyOn(frequencyBufferService, 'initializeFrequencyBuffer').mockReturnValue({
+      frequencyData: new Float32Array(4),
+      fftSize: 8,
+      frequencyBinCount: 4,
+    });
+    vi.spyOn(frequencyBufferService, 'disposeFrequencyBuffer').mockReturnValue({
+      frequencyData: null,
+      fftSize: 0,
+      frequencyBinCount: 0,
     });
   });
 
