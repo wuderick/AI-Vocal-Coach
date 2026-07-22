@@ -27,6 +27,7 @@ export function useAudioCapture() {
   }, [actions]);
 
   const updateFrequencyBuffer = useCallback(() => actions.updateFrequencyBuffer(), [actions]);
+  const updateTimeDomainBuffer = useCallback(() => actions.updateTimeDomainBuffer(), [actions]);
   const startFrequencyUpdateScheduler = useCallback(() => actions.startFrequencyUpdateScheduler(), [actions]);
   const stopFrequencyUpdateScheduler = useCallback(() => actions.stopFrequencyUpdateScheduler(), [actions]);
 
@@ -39,9 +40,13 @@ export function useAudioCapture() {
     isFrequencyBufferReady:
       state.audioFrequencyBufferRuntime.frequencyData !== null
       && state.audioFrequencyBufferRuntime.frequencyData.length > 0,
+    isTimeDomainBufferReady:
+      state.audioTimeDomainBufferRuntime?.timeDomainData !== null
+      && (state.audioTimeDomainBufferRuntime?.timeDomainData?.length ?? 0) > 0,
     startAudioCapture,
     stopAudioCapture,
     updateFrequencyBuffer,
+    updateTimeDomainBuffer,
     startFrequencyUpdateScheduler,
     stopFrequencyUpdateScheduler,
   };

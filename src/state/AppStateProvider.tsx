@@ -8,6 +8,7 @@ import * as audioCaptureService from '../services/audio/audioCaptureService';
 import * as audioGraphService from '../services/audio/audioGraphService';
 import * as frequencyBufferService from '../services/audio/frequencyBufferService';
 import * as frequencyUpdateSchedulerService from '../services/audio/frequencyUpdateSchedulerService';
+import * as timeDomainBufferService from '../services/audio/timeDomainBufferService';
 
 const CAPTURE_DEVICE_LOCK_STATES = new Set(['starting', 'active', 'stopping']);
 
@@ -31,6 +32,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const captureRuntimeRef = useRef<audioCaptureService.AudioCaptureRuntime>(initialAudioCaptureRuntime);
   const graphRuntimeRef = useRef<audioGraphService.AudioGraphRuntime>(audioGraphService.initialAudioGraphRuntime);
   const frequencyBufferRuntimeRef = useRef<frequencyBufferService.FrequencyBufferRuntime>(frequencyBufferService.initialFrequencyBufferRuntime);
+  const timeDomainBufferRuntimeRef =
+    useRef<timeDomainBufferService.TimeDomainBufferRuntime>(
+      timeDomainBufferService.initialTimeDomainBufferRuntime,
+    );
   const frequencyUpdateSchedulerRuntimeRef =
     useRef<frequencyUpdateSchedulerService.FrequencyUpdateSchedulerRuntime>(
       frequencyUpdateSchedulerService.createSchedulerRuntime(),
@@ -63,6 +68,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     runtime: frequencyBufferRuntimeRef.current,
   });
 
+  const updateTimeDomainBuffer = () => timeDomainBufferService.readTimeDomainData({
+    analyserNode: graphRuntimeRef.current.analyserNode,
+    runtime: timeDomainBufferRuntimeRef.current,
+  });
+
   const validateFrequencyUpdateSchedulerRuntime = () => {
     const analyserNode = graphRuntimeRef.current.analyserNode;
     const frequencyData = frequencyBufferRuntimeRef.current.frequencyData;
@@ -86,6 +96,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       isMountedRef.current = false;
       setCaptureOperation();
       stopFrequencyUpdateScheduler();
+      timeDomainBufferRuntimeRef.current = timeDomainBufferService.disposeTimeDomainBuffer(timeDomainBufferRuntimeRef.current);
       frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
       void audioCaptureService.stopAudioCapture(captureRuntimeRef.current);
@@ -164,6 +175,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       const selectedDeviceId = stateRef.current.selectedAudioInputId;
       const previousGraphRuntime = graphRuntimeRef.current;
       const previousFrequencyBufferRuntime = frequencyBufferRuntimeRef.current;
+      const previousTimeDomainBufferRuntime = timeDomainBufferRuntimeRef.current;
 
       safeSetState((current) => ({
         ...current,
@@ -200,6 +212,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             audioCaptureRuntime: stoppedRuntime,
             audioGraphRuntime: previousGraphRuntime,
             audioFrequencyBufferRuntime: previousFrequencyBufferRuntime,
+            audioTimeDomainBufferRuntime: previousTimeDomainBufferRuntime,
           }));
           return;
         }
@@ -227,11 +240,43 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             audioCaptureRuntime: stoppedRuntime,
             audioGraphRuntime: previousGraphRuntime,
             audioFrequencyBufferRuntime: previousFrequencyBufferRuntime,
+            audioTimeDomainBufferRuntime: previousTimeDomainBufferRuntime,
+          }));
+          return;
+        }
+
+        let nextTimeDomainBufferRuntime: timeDomainBufferService.TimeDomainBufferRuntime;
+        try {
+          nextTimeDomainBufferRuntime = timeDomainBufferService.initializeTimeDomainBuffer({
+            analyserNode: graphRuntime.analyserNode,
+          });
+        } catch {
+          frequencyBufferService.disposeFrequencyBuffer(nextFrequencyBufferRuntime);
+          audioGraphService.disposeAudioGraph(graphRuntime);
+          const stoppedRuntime = await audioCaptureService.stopAudioCapture(runtime);
+
+          if (!isMountedRef.current) return;
+          if (operationId !== captureOperationRef.current) return;
+
+          captureRuntimeRef.current = stoppedRuntime;
+          graphRuntimeRef.current = previousGraphRuntime;
+          frequencyBufferRuntimeRef.current = previousFrequencyBufferRuntime;
+          timeDomainBufferRuntimeRef.current = previousTimeDomainBufferRuntime;
+
+          safeSetState((current) => ({
+            ...current,
+            audioCaptureStatus: 'error',
+            audioCaptureErrorCode: 'unknown',
+            audioCaptureRuntime: stoppedRuntime,
+            audioGraphRuntime: previousGraphRuntime,
+            audioFrequencyBufferRuntime: previousFrequencyBufferRuntime,
+            audioTimeDomainBufferRuntime: previousTimeDomainBufferRuntime,
           }));
           return;
         }
 
         if (!isMountedRef.current) {
+          timeDomainBufferService.disposeTimeDomainBuffer(nextTimeDomainBufferRuntime);
           frequencyBufferService.disposeFrequencyBuffer(nextFrequencyBufferRuntime);
           audioGraphService.disposeAudioGraph(graphRuntime);
           void audioCaptureService.stopAudioCapture(runtime);
@@ -239,6 +284,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (operationId !== captureOperationRef.current) {
+          timeDomainBufferService.disposeTimeDomainBuffer(nextTimeDomainBufferRuntime);
           frequencyBufferService.disposeFrequencyBuffer(nextFrequencyBufferRuntime);
           audioGraphService.disposeAudioGraph(graphRuntime);
           audioCaptureService.stopMediaStream(runtime.mediaStream);
@@ -250,10 +296,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }
 
         frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(previousFrequencyBufferRuntime);
+        timeDomainBufferRuntimeRef.current = timeDomainBufferService.disposeTimeDomainBuffer(previousTimeDomainBufferRuntime);
         audioGraphService.disposeAudioGraph(previousGraphRuntime);
         captureRuntimeRef.current = runtime;
         graphRuntimeRef.current = graphRuntime;
         frequencyBufferRuntimeRef.current = nextFrequencyBufferRuntime;
+        timeDomainBufferRuntimeRef.current = nextTimeDomainBufferRuntime;
         safeSetState((current) => ({
           ...current,
           audioCaptureStatus: 'active',
@@ -261,8 +309,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           audioCaptureRuntime: runtime,
           audioGraphRuntime: graphRuntime,
           audioFrequencyBufferRuntime: nextFrequencyBufferRuntime,
+          audioTimeDomainBufferRuntime: nextTimeDomainBufferRuntime,
         }));
       } catch (error) {
+        timeDomainBufferRuntimeRef.current = timeDomainBufferService.disposeTimeDomainBuffer(timeDomainBufferRuntimeRef.current);
         frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
         graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
         const stoppedRuntime = await audioCaptureService.stopAudioCapture(captureRuntimeRef.current);
@@ -279,6 +329,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           audioCaptureRuntime: stoppedRuntime,
           audioGraphRuntime: graphRuntimeRef.current,
           audioFrequencyBufferRuntime: frequencyBufferRuntimeRef.current,
+          audioTimeDomainBufferRuntime: timeDomainBufferRuntimeRef.current,
         }));
       }
     },
@@ -294,6 +345,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       }));
 
       stopFrequencyUpdateScheduler();
+        timeDomainBufferRuntimeRef.current = timeDomainBufferService.disposeTimeDomainBuffer(timeDomainBufferRuntimeRef.current);
       frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
 
@@ -310,6 +362,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         audioCaptureRuntime: runtime,
         audioGraphRuntime: graphRuntimeRef.current,
         audioFrequencyBufferRuntime: frequencyBufferRuntimeRef.current,
+        audioTimeDomainBufferRuntime: timeDomainBufferRuntimeRef.current,
       }));
     },
     setAutoSaveRecording: (enabled: boolean) => setState((current) => ({ ...current, autoSaveRecording: enabled })),
@@ -328,8 +381,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         },
         audioGraphRuntime: audioGraphService.initialAudioGraphRuntime,
         audioFrequencyBufferRuntime: frequencyBufferService.initialFrequencyBufferRuntime,
+        audioTimeDomainBufferRuntime: timeDomainBufferService.initialTimeDomainBufferRuntime,
       }));
 
+      timeDomainBufferRuntimeRef.current = timeDomainBufferService.disposeTimeDomainBuffer(timeDomainBufferRuntimeRef.current);
       frequencyBufferRuntimeRef.current = frequencyBufferService.disposeFrequencyBuffer(frequencyBufferRuntimeRef.current);
       graphRuntimeRef.current = audioGraphService.disposeAudioGraph(graphRuntimeRef.current);
 
@@ -345,10 +400,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           audioCaptureRuntime: runtime,
           audioGraphRuntime: graphRuntimeRef.current,
           audioFrequencyBufferRuntime: frequencyBufferRuntimeRef.current,
+          audioTimeDomainBufferRuntime: timeDomainBufferRuntimeRef.current,
         }));
       });
     },
     updateFrequencyBuffer,
+    updateTimeDomainBuffer,
     startFrequencyUpdateScheduler: () => {
       validateFrequencyUpdateSchedulerRuntime();
       frequencyUpdateSchedulerService.startScheduler({

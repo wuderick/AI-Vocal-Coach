@@ -32,11 +32,19 @@ function createRuntime(overrides: Partial<audioCaptureService.AudioCaptureRuntim
 describe('AudioDeviceCard', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    const validAnalyserNode = {
+      disconnect: vi.fn(),
+      fftSize: 8,
+      frequencyBinCount: 4,
+      getFloatFrequencyData: vi.fn(),
+      getFloatTimeDomainData: vi.fn(),
+    } as unknown as AnalyserNode;
+
     vi.spyOn(audioCaptureService, 'startAudioCapture').mockResolvedValue(createRuntime());
     vi.spyOn(audioCaptureService, 'stopAudioCapture').mockResolvedValue(createRuntime());
     vi.spyOn(audioGraphService, 'initializeAudioGraph').mockReturnValue({
       sourceNode: { disconnect: vi.fn() } as unknown as MediaStreamAudioSourceNode,
-      analyserNode: { disconnect: vi.fn() } as unknown as AnalyserNode,
+      analyserNode: validAnalyserNode,
     });
     vi.spyOn(audioGraphService, 'disposeAudioGraph').mockReturnValue({
       sourceNode: null,

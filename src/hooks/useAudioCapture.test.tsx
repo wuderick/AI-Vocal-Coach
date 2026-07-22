@@ -10,6 +10,7 @@ import * as audioDeviceService from '../services/audio/audioDeviceService';
 import * as audioGraphService from '../services/audio/audioGraphService';
 import * as frequencyBufferService from '../services/audio/frequencyBufferService';
 import * as frequencyUpdateSchedulerService from '../services/audio/frequencyUpdateSchedulerService';
+import * as timeDomainBufferService from '../services/audio/timeDomainBufferService';
 
 vi.mock('../services/audio/audioCaptureService', async () => {
   const actual = await vi.importActual<typeof import('../services/audio/audioCaptureService')>('../services/audio/audioCaptureService');
@@ -56,6 +57,15 @@ vi.mock('../services/audio/frequencyUpdateSchedulerService', async () => {
   };
 });
 
+vi.mock('../services/audio/timeDomainBufferService', async () => {
+  const actual = await vi.importActual<typeof import('../services/audio/timeDomainBufferService')>('../services/audio/timeDomainBufferService');
+  return {
+    ...actual,
+    initializeTimeDomainBuffer: vi.fn(),
+    disposeTimeDomainBuffer: vi.fn(),
+  };
+});
+
 interface Deferred<T> {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -82,10 +92,12 @@ function createRuntime(overrides: Partial<audioCaptureService.AudioCaptureRuntim
 }
 
 let latestUpdateFrequencyBuffer: (() => Float32Array) | null = null;
+let latestUpdateTimeDomainBuffer: (() => Float32Array) | null = null;
 let latestStartFrequencyUpdateScheduler: (() => void) | null = null;
 let latestStopFrequencyUpdateScheduler: (() => void) | null = null;
 let latestGraphRuntimeRef: audioGraphService.AudioGraphRuntime | null = null;
 let latestFrequencyBufferRuntimeRef: frequencyBufferService.FrequencyBufferRuntime | null = null;
+let latestTimeDomainBufferRuntimeRef: timeDomainBufferService.TimeDomainBufferRuntime | null = null;
 let renderCount = 0;
 
 interface CapturedSchedulerOptions {
@@ -103,18 +115,22 @@ function TestCaptureHarness() {
     startAudioCapture,
     stopAudioCapture,
     updateFrequencyBuffer,
+    updateTimeDomainBuffer,
     startFrequencyUpdateScheduler,
     stopFrequencyUpdateScheduler,
     isAudioGraphReady,
     isFrequencyBufferReady,
+    isTimeDomainBufferReady,
   } = useAudioCapture();
 
   renderCount += 1;
   latestUpdateFrequencyBuffer = updateFrequencyBuffer;
+  latestUpdateTimeDomainBuffer = updateTimeDomainBuffer;
   latestStartFrequencyUpdateScheduler = startFrequencyUpdateScheduler;
   latestStopFrequencyUpdateScheduler = stopFrequencyUpdateScheduler;
   latestGraphRuntimeRef = state.audioGraphRuntime;
   latestFrequencyBufferRuntimeRef = state.audioFrequencyBufferRuntime;
+  latestTimeDomainBufferRuntimeRef = state.audioTimeDomainBufferRuntime ?? null;
 
   return (
     <div>
@@ -125,8 +141,10 @@ function TestCaptureHarness() {
       <div data-testid="runtime-graph-source">{String(Boolean(state.audioGraphRuntime.sourceNode))}</div>
       <div data-testid="runtime-graph-analyser">{String(Boolean(state.audioGraphRuntime.analyserNode))}</div>
       <div data-testid="runtime-frequency-buffer">{String(Boolean(state.audioFrequencyBufferRuntime.frequencyData))}</div>
+      <div data-testid="runtime-time-domain-buffer">{String(Boolean(state.audioTimeDomainBufferRuntime?.timeDomainData))}</div>
       <div data-testid="graph-ready">{String(isAudioGraphReady)}</div>
       <div data-testid="frequency-buffer-ready">{String(isFrequencyBufferReady)}</div>
+      <div data-testid="time-domain-buffer-ready">{String(isTimeDomainBufferReady)}</div>
       <button data-testid="start" onClick={() => void startAudioCapture()}>start</button>
       <button data-testid="stop" onClick={() => void stopAudioCapture()}>stop</button>
       <button data-testid="refresh-devices" onClick={() => void actions.refreshAudioDevices()}>refresh devices</button>
@@ -160,21 +178,28 @@ describe('useAudioCapture + AppStateProvider', () => {
   const mockedDisposeAudioGraph = vi.mocked(audioGraphService.disposeAudioGraph);
   const mockedInitializeFrequencyBuffer = vi.mocked(frequencyBufferService.initializeFrequencyBuffer);
   const mockedDisposeFrequencyBuffer = vi.mocked(frequencyBufferService.disposeFrequencyBuffer);
+  const mockedInitializeTimeDomainBuffer = vi.mocked(timeDomainBufferService.initializeTimeDomainBuffer);
+  const mockedDisposeTimeDomainBuffer = vi.mocked(timeDomainBufferService.disposeTimeDomainBuffer);
   const mockedStartScheduler = vi.mocked(frequencyUpdateSchedulerService.startScheduler);
   const mockedStopScheduler = vi.mocked(frequencyUpdateSchedulerService.stopScheduler);
   let mockedReadFrequencyData: MockInstance;
+  let mockedReadTimeDomainData: MockInstance;
   let mockedGetFloatFrequencyData: ReturnType<typeof vi.fn>;
+  let mockedGetFloatTimeDomainData: ReturnType<typeof vi.fn>;
 
   let graphRuntime: audioGraphService.AudioGraphRuntime;
   let frequencyBufferRuntime: frequencyBufferService.FrequencyBufferRuntime;
+  let timeDomainBufferRuntime: timeDomainBufferService.TimeDomainBufferRuntime;
 
   beforeEach(() => {
     vi.clearAllMocks();
     latestUpdateFrequencyBuffer = null;
+    latestUpdateTimeDomainBuffer = null;
     latestStartFrequencyUpdateScheduler = null;
     latestStopFrequencyUpdateScheduler = null;
     latestGraphRuntimeRef = null;
     latestFrequencyBufferRuntimeRef = null;
+    latestTimeDomainBufferRuntimeRef = null;
     renderCount = 0;
 
     mockedGetFloatFrequencyData = vi.fn((buffer: Float32Array) => {
@@ -182,11 +207,18 @@ describe('useAudioCapture + AppStateProvider', () => {
       buffer[1] = buffer[1] + 2;
     });
 
+    mockedGetFloatTimeDomainData = vi.fn((buffer: Float32Array) => {
+      buffer[0] = 0.125;
+      buffer[1] = -0.25;
+    });
+
     graphRuntime = {
       sourceNode: { disconnect: vi.fn() } as unknown as MediaStreamAudioSourceNode,
       analyserNode: {
         disconnect: vi.fn(),
         getFloatFrequencyData: mockedGetFloatFrequencyData,
+        getFloatTimeDomainData: mockedGetFloatTimeDomainData,
+        fftSize: 4,
       } as unknown as AnalyserNode,
     };
 
@@ -196,6 +228,11 @@ describe('useAudioCapture + AppStateProvider', () => {
       frequencyBinCount: 4,
     };
 
+    timeDomainBufferRuntime = {
+      timeDomainData: new Float32Array(4),
+      fftSize: 4,
+    };
+
     mockedGetAudioInputDevices.mockResolvedValue([]);
     mockedStartAudioCapture.mockResolvedValue(createRuntime());
     mockedStopAudioCapture.mockResolvedValue(createRuntime());
@@ -203,9 +240,12 @@ describe('useAudioCapture + AppStateProvider', () => {
     mockedDisposeAudioGraph.mockReturnValue({ sourceNode: null, analyserNode: null });
     mockedInitializeFrequencyBuffer.mockReturnValue(frequencyBufferRuntime);
     mockedDisposeFrequencyBuffer.mockReturnValue({ frequencyData: null, fftSize: 0, frequencyBinCount: 0 });
+    mockedInitializeTimeDomainBuffer.mockReturnValue(timeDomainBufferRuntime);
+    mockedDisposeTimeDomainBuffer.mockReturnValue({ timeDomainData: null, fftSize: 0 });
     mockedStartScheduler.mockImplementation(() => {});
     mockedStopScheduler.mockImplementation(() => {});
     mockedReadFrequencyData = vi.spyOn(frequencyBufferService, 'readFrequencyData');
+    mockedReadTimeDomainData = vi.spyOn(timeDomainBufferService, 'readTimeDomainData');
   });
 
   afterEach(() => {
@@ -243,6 +283,25 @@ describe('useAudioCapture + AppStateProvider', () => {
     expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('false');
   });
 
+  it('does not mark zero-length time-domain buffer as ready', async () => {
+    mockedInitializeTimeDomainBuffer.mockReturnValueOnce({
+      timeDomainData: new Float32Array(0),
+      fftSize: 0,
+    });
+
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+    expect(screen.getByTestId('runtime-time-domain-buffer')).toHaveTextContent('true');
+    expect(screen.getByTestId('time-domain-buffer-ready')).toHaveTextContent('false');
+  });
+
   it('transitions idle -> starting -> active and saves runtime stream', async () => {
     const deferred = createDeferred<audioCaptureService.AudioCaptureRuntime>();
     mockedStartAudioCapture.mockReturnValueOnce(deferred.promise);
@@ -264,8 +323,130 @@ describe('useAudioCapture + AppStateProvider', () => {
     await waitFor(() => expect(screen.getByTestId('runtime-stream')).toHaveTextContent('true'));
     await waitFor(() => expect(screen.getByTestId('graph-ready')).toHaveTextContent('true'));
     await waitFor(() => expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('true'));
+    await waitFor(() => expect(screen.getByTestId('time-domain-buffer-ready')).toHaveTextContent('true'));
     expect(mockedInitializeAudioGraph).toHaveBeenCalledTimes(1);
     expect(mockedInitializeFrequencyBuffer).toHaveBeenCalledTimes(1);
+    expect(mockedInitializeTimeDomainBuffer).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates and returns time-domain data in active state', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const updateTimeDomain = latestUpdateTimeDomainBuffer;
+    expect(updateTimeDomain).not.toBeNull();
+
+    const result = updateTimeDomain!();
+
+    expect(result).toBe(timeDomainBufferRuntime.timeDomainData);
+    expect(latestTimeDomainBufferRuntimeRef).toBe(timeDomainBufferRuntime);
+    expect(mockedReadTimeDomainData).toHaveBeenCalledWith({
+      analyserNode: graphRuntime.analyserNode,
+      runtime: timeDomainBufferRuntime,
+    });
+    expect(mockedGetFloatTimeDomainData).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the same Float32Array across repeated time-domain updates and does not reallocate buffer', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const updateTimeDomain = latestUpdateTimeDomainBuffer;
+    expect(updateTimeDomain).not.toBeNull();
+
+    const first = updateTimeDomain!();
+    const second = updateTimeDomain!();
+    const third = updateTimeDomain!();
+
+    expect(first).toBe(timeDomainBufferRuntime.timeDomainData);
+    expect(second).toBe(timeDomainBufferRuntime.timeDomainData);
+    expect(third).toBe(timeDomainBufferRuntime.timeDomainData);
+    expect(first).toBe(second);
+    expect(second).toBe(third);
+    expect(mockedGetFloatTimeDomainData).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not trigger provider setState on successful time-domain update', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const updateTimeDomain = latestUpdateTimeDomainBuffer;
+    expect(updateTimeDomain).not.toBeNull();
+
+    const renderCountBefore = renderCount;
+    updateTimeDomain!();
+
+    expect(renderCount).toBe(renderCountBefore);
+  });
+
+  it('throws invalid-runtime when time-domain update is called with zero-length runtime', async () => {
+    mockedInitializeTimeDomainBuffer.mockReturnValueOnce({
+      timeDomainData: new Float32Array(0),
+      fftSize: 0,
+    });
+
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const updateTimeDomain = latestUpdateTimeDomainBuffer;
+    expect(updateTimeDomain).not.toBeNull();
+
+    let caught: unknown;
+    try {
+      updateTimeDomain!();
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(timeDomainBufferService.TimeDomainBufferError);
+    expect((caught as timeDomainBufferService.TimeDomainBufferError).code).toBe('invalid-runtime');
+  });
+
+  it('keeps frequency buffer behavior unaffected when time-domain update runs', async () => {
+    render(
+      <AppStateProvider>
+        <TestCaptureHarness />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('start'));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('active'));
+
+    const updateFrequency = latestUpdateFrequencyBuffer;
+    const updateTimeDomain = latestUpdateTimeDomainBuffer;
+    expect(updateFrequency).not.toBeNull();
+    expect(updateTimeDomain).not.toBeNull();
+
+    const frequencyResult = updateFrequency!();
+    const timeDomainResult = updateTimeDomain!();
+
+    expect(frequencyResult).toBe(frequencyBufferRuntime.frequencyData);
+    expect(timeDomainResult).toBe(timeDomainBufferRuntime.timeDomainData);
+    expect(screen.getByTestId('frequency-buffer-ready')).toHaveTextContent('true');
   });
 
   it('passes selectedAudioInputId to startAudioCapture', async () => {

@@ -2,6 +2,7 @@ import type { AudioInputDevice } from '../types/audio';
 import type { AudioCaptureErrorCode, AudioCaptureRuntime } from '../services/audio/audioCaptureService';
 import type { AudioGraphRuntime } from '../services/audio/audioGraphService';
 import type { FrequencyBufferRuntime } from '../services/audio/frequencyBufferService';
+import type { TimeDomainBufferRuntime } from '../services/audio/timeDomainBufferService';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type RecordingState = 'idle' | 'recording' | 'paused' | 'stopped';
@@ -26,6 +27,7 @@ export interface AppState {
   audioCaptureRuntime: AudioCaptureRuntime;
   audioGraphRuntime: AudioGraphRuntime;
   audioFrequencyBufferRuntime: FrequencyBufferRuntime;
+  audioTimeDomainBufferRuntime?: TimeDomainBufferRuntime;
   currentSession: CurrentSessionState;
   autoSaveRecording: boolean;
 }
@@ -41,6 +43,7 @@ export interface AppStateActions {
   startAudioCapture: () => Promise<void>;
   stopAudioCapture: () => Promise<void>;
   updateFrequencyBuffer: () => Float32Array;
+  updateTimeDomainBuffer: () => Float32Array;
   startFrequencyUpdateScheduler: () => void;
   stopFrequencyUpdateScheduler: () => void;
   setAutoSaveRecording: (enabled: boolean) => void;
